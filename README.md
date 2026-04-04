@@ -4,8 +4,7 @@ Originally a port of prBoom to the GBA, then ported to the Numworks calculator.
 
 Works on both simulator **AND REAL DEVICE** (only tested on N0110) !
 
-![Picture of the game running on real device wow amazing](pic.jpg){height=150}
-![Video of the game running on real device wow amazing](vid.mp4)
+https://github.com/user-attachments/assets/15cdd241-f8f5-4c12-888f-607869b79a1a
 
 This project uses [GbaWadUtil](https://github.com/doomhack/GbaWadUtil) (by doomhack) from the original GBADoom repo to embed the chosen WAD into the app.
 
