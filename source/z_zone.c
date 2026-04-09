@@ -80,7 +80,7 @@ memzone_t*	mainzone;
 #if defined(NUMWORKS) && PLATFORM_DEVICE
 // Fallback when allocator-backed heap doesn't give nearly enough memory
 #ifdef USE_UNSTABLE_ZONE_HEAP_SIZE
-static byte s_numworks_zone_fallback_heap[92 * 1024] __attribute__((aligned(8)));
+static byte s_numworks_zone_fallback_heap[101 * 1024] __attribute__((aligned(8)));
 #else
 static byte s_numworks_zone_fallback_heap[72 * 1024] __attribute__((aligned(8)));
 #endif
