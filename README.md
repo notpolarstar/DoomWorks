@@ -20,15 +20,11 @@ As a result, most WADs (including the basic shareware WAD) either won't fit when
 
 ### RAM / Allocation issues:
 
-Due to issues I have encountered when developping this project, mainly very unreliable memory allocations, the "Zone" allocation that is used to load almost all of the data is a static byte array of either 72KB (stable) or 96KB (unstable). This is temporary and I will change it later on.
+Instead of using DOOM's builtin Zone allocator, this project uses the system allocator (malloc / free). The performance cost is negligible.
 
-To use the bigger memory, add `USE_UNSTABLE_ZONE_HEAP_SIZE=1` when making the project for real device. Adding `GBADOOM_ENABLE_STACK_REUSE=1` also helps a bit with memory usage.
+However, the calculator only give around 100KB of memory for the entire app. This means that most maps will not load. I am still working on optimizing ram usage for the future.
 
-Unfortunately, this bigger zone heap comes at the cost of the OS (Epsilon) crashing every single time I try to exit the app. I have no idea why this happens, if it only happens on newer OS versions, on my N0110, if is it because of a bug in my app... But, a static byte array of 72KB seems to be the upper limit before the OS becomes unstable upon exiting.
-
-Thanks to the [Upsilon](https://getupsilon.web.app/) bootloader, comming back from this crash is quick and painless, but I have no idea of what happens on models other than N0110, or even with the stock bootloader.
-
-From what I have heard, N0120 models have a lot more RAM to work with. However, as I don't have this model, it is untested, and (for now) do not have a bigger zone allocation.
+From what I have heard, N0120 calculator have double the ram compared to all other models. I don't know if that extra ram is available for apps as I don't have this model, but if it is, most maps of WADs using the "compact" format should work without issue.
 
 ### WAD size issues:
 

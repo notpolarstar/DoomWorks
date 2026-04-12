@@ -26,6 +26,184 @@
 #include "doomtype.h"
 #include "lprintf.h"
 #include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+
+#if defined(NUMWORKS) && PLATFORM_DEVICE
+#define USE_SYSTEM_ALLOCATOR 1
+#else
+#define USE_SYSTEM_ALLOCATOR 0
+#endif
+
+#if USE_SYSTEM_ALLOCATOR
+
+#define SYSALLOC_MAGIC 0x5A4D414Cu
+
+typedef struct sysallocblock_s
+{
+    uint32_t magic;
+    size_t size;
+    int tag;
+    void** user;
+    struct sysallocblock_s* next;
+    struct sysallocblock_s* prev;
+} sysallocblock_t;
+
+static sysallocblock_t* s_sysalloc_head = NULL;
+
+static int running_count = 0;
+#include <stdio.h>
+
+static void Z_SysAlloc_Unlink(sysallocblock_t* block)
+{
+    if (block->prev != NULL)
+        block->prev->next = block->next;
+    else
+        s_sysalloc_head = block->next;
+
+    if (block->next != NULL)
+        block->next->prev = block->prev;
+}
+
+void Z_Init(void)
+{
+    s_sysalloc_head = NULL;
+    lprintf(LO_INFO, "Z_Init: using system malloc/free allocator (zone disabled)");
+}
+
+unsigned int Z_GetHeapSize(void)
+{
+    return 0;
+}
+
+unsigned int Z_GetFreeMemory(void)
+{
+    return 0;
+}
+
+void* Z_Malloc(int size, int tag, void** user)
+{
+    sysallocblock_t* block;
+    const size_t aligned_size = (size <= 0) ? 4u : (size_t)((size + 3) & ~3);
+    const size_t total_size = sizeof(sysallocblock_t) + aligned_size;
+
+    if (user == NULL && tag >= PU_PURGELEVEL)
+        I_Error("Z_Malloc: an owner is required for purgable blocks");
+
+    block = (sysallocblock_t*)malloc(total_size);
+    if (block == NULL)
+    {
+        I_Error("Z_Malloc(system): failed allocation of %i bytes\nUsed: %d bytes", (int)aligned_size, running_count);
+    }
+
+    block->magic = SYSALLOC_MAGIC;
+    block->size = aligned_size;
+    block->tag = tag;
+    block->user = user ? user : (void**)2;
+    block->prev = NULL;
+    block->next = s_sysalloc_head;
+    if (s_sysalloc_head != NULL)
+        s_sysalloc_head->prev = block;
+    s_sysalloc_head = block;
+
+    if (user)
+        *user = (void*)(block + 1);
+
+    running_count += (int)aligned_size;
+    printf("Alloc(sys): %d (%d)\n", (int)aligned_size, running_count);
+
+    return (void*)(block + 1);
+}
+
+void Z_Free(void* ptr)
+{
+    sysallocblock_t* block;
+
+    if (ptr == NULL)
+        return;
+
+    block = ((sysallocblock_t*)ptr) - 1;
+    if (block->magic != SYSALLOC_MAGIC)
+        I_Error("Z_Free(system): bad magic");
+
+    if (block->user > (void**)0x100)
+        *block->user = 0;
+
+    Z_SysAlloc_Unlink(block);
+
+    running_count -= (int)block->size;
+    printf("Free(sys): %d\n", running_count);
+
+    free(block);
+}
+
+void Z_FreeTags(int lowtag, int hightag)
+{
+    sysallocblock_t* block = s_sysalloc_head;
+    while (block != NULL)
+    {
+        sysallocblock_t* next = block->next;
+        if (block->tag >= lowtag && block->tag <= hightag)
+            Z_Free((void*)(block + 1));
+        block = next;
+    }
+}
+
+void Z_CheckHeap(void)
+{
+    sysallocblock_t* block = s_sysalloc_head;
+    sysallocblock_t* prev = NULL;
+
+    while (block != NULL)
+    {
+        if (block->magic != SYSALLOC_MAGIC)
+            I_Error("Z_CheckHeap(system): bad magic");
+        if (block->prev != prev)
+            I_Error("Z_CheckHeap(system): broken back link");
+        prev = block;
+        block = block->next;
+    }
+}
+
+void* Z_Calloc(size_t count, size_t size, int tag, void** user)
+{
+    const size_t bytes = count * size;
+    void* ptr = Z_Malloc((int)bytes, tag, user);
+    if (ptr != NULL)
+        memset(ptr, 0, bytes);
+    return ptr;
+}
+
+char* Z_Strdup(const char* s)
+{
+    const size_t len = strlen(s);
+    char* ptr;
+
+    if (len == 0)
+        return NULL;
+
+    ptr = (char*)Z_Malloc((int)(len + 1), PU_STATIC, NULL);
+    if (ptr != NULL)
+        strcpy(ptr, s);
+    return ptr;
+}
+
+void* Z_Realloc(void* ptr, size_t n, int tag, void** user)
+{
+    void* p = Z_Malloc((int)n, tag, user);
+    if (ptr != NULL)
+    {
+        sysallocblock_t* block = ((sysallocblock_t*)ptr) - 1;
+        const size_t copy_size = (n <= block->size) ? n : block->size;
+        memcpy(p, ptr, copy_size);
+        Z_Free(ptr);
+        if (user)
+            *user = p;
+    }
+    return p;
+}
+
+#else
 
 
 //
@@ -471,3 +649,5 @@ void Z_CheckHeap (void)
             I_Error ("Z_CheckHeap: two consecutive free blocks\n");
     }
 }
+
+#endif
