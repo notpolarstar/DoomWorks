@@ -11,6 +11,7 @@ extern "C"
 #include "d_main.h"
 #include "d_event.h"
 #include "lprintf.h"
+#include "m_cheat.h"
 #include "z_zone.h"
 }
 
@@ -70,11 +71,11 @@ static void DrawDebugOverlay(void)
 static void DrawZoneOverlay(void)
 {
     char overlay[32];
-    unsigned int free_zone = Z_GetFreeMemory();
+    unsigned int used_zone = Z_GetAllocatedMemory();
     int len;
     int x;
 
-    snprintf(overlay, sizeof(overlay), "Z:%u", free_zone);
+    snprintf(overlay, sizeof(overlay), "Z:%u", used_zone);
     len = (int)strlen(overlay);
     x = EADK_SCREEN_WIDTH - (len * kFontWidth) - 2;
 
@@ -200,6 +201,31 @@ static void ProcessKeyTransition(eadk_keyboard_state_t current, eadk_keyboard_st
     }
 }
 
+static bool ConsumeCheatHotkeys(eadk_keyboard_state_t current, eadk_keyboard_state_t previous)
+{
+    bool skip_now = eadk_keyboard_key_down(current, eadk_key_shift)
+        && eadk_keyboard_key_down(current, eadk_key_exe);
+    bool skip_prev = eadk_keyboard_key_down(previous, eadk_key_shift)
+        && eadk_keyboard_key_down(previous, eadk_key_exe);
+
+    bool god_now = eadk_keyboard_key_down(current, eadk_key_alpha)
+        && eadk_keyboard_key_down(current, eadk_key_exe);
+    bool god_prev = eadk_keyboard_key_down(previous, eadk_key_alpha)
+        && eadk_keyboard_key_down(previous, eadk_key_exe);
+
+    if (skip_now && !skip_prev)
+    {
+        C_TriggerExitLevelCheat();
+    }
+
+    if (god_now && !god_prev)
+    {
+        C_TriggerGodCheat();
+    }
+
+    return skip_now || god_now;
+}
+
 static void WaitForNoKeys(void)
 {
     while (eadk_keyboard_scan() != 0)
@@ -232,7 +258,9 @@ static void ShowDebugChoicePrompt(void)
         "OK / BACK: hide logs\n"
         "\n"
         "Hotkey in game:\n"
-        "SHIFT+ALPHA toggles",
+        "SHIFT+ALPHA toggles\n"
+        "SHIFT+EXE exits level\n"
+        "ALPHA+EXE god mode",
         4,
         8,
         EADK_SCREEN_WIDTH - 8,
@@ -368,6 +396,12 @@ void I_ProcessKeyEvents()
 
     // Consume combo press so gameplay does not receive L/R key events from toggle hotkey.
     if (combo_now)
+    {
+        s_prev_keyboard_state = current;
+        return;
+    }
+
+    if (ConsumeCheatHotkeys(current, s_prev_keyboard_state))
     {
         s_prev_keyboard_state = current;
         return;

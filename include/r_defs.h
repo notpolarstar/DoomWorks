@@ -115,7 +115,11 @@ typedef struct
   // thinglist is a subset of touching_thinglist
   struct msecnode_s *touching_thinglist;               // phares 3/14/98
 
+#if defined(NUMWORKS) && PLATFORM_DEVICE
+  unsigned short *lines;
+#else
   const struct line_s **lines;
+#endif
 
   short linecount;
 
@@ -173,8 +177,6 @@ typedef struct linedata_s
 {
     unsigned short validcount;        // if == validcount, already checked
     unsigned short r_validcount;      // cph: if == gametic, r_flags already done
-
-    short special;
     short r_flags;
 } linedata_t;
 
@@ -199,7 +201,26 @@ typedef struct line_s
 #define LN_FRONTSECTOR(l) (_g->sides[(l)->sidenum[0]].sector)
 #define LN_BACKSECTOR(l) ((l)->sidenum[1] != NO_INDEX ? _g->sides[(l)->sidenum[1]].sector : NULL)
 
-#define LN_SPECIAL(l) (_g->linedata[(l)->lineno].special)
+#if defined(NUMWORKS) && PLATFORM_DEVICE
+#define SECTOR_LINE(sector, idx) (&_g->lines[(sector)->lines[(idx)]])
+#else
+#define SECTOR_LINE(sector, idx) ((sector)->lines[(idx)])
+#endif
+
+#define LN_SPECIAL_WORD(lineno) ((lineno) >> 3)
+#define LN_SPECIAL_MASK(lineno) (1u << ((lineno) & 7))
+#define LN_SPECIAL_CLEARED(lineno) \
+    (_g->line_special_cleared[LN_SPECIAL_WORD(lineno)] & LN_SPECIAL_MASK(lineno))
+#define LN_SPECIAL_STAIRDIR_BIT 0x0100
+#define LN_SPECIAL_STAIRDIR_TOGGLED(lineno) \
+    (_g->line_special_stairdir_toggled[LN_SPECIAL_WORD(lineno)] & LN_SPECIAL_MASK(lineno))
+#define LN_SPECIAL_BASE(l) \
+    ((short)((l)->const_special ^ (LN_SPECIAL_STAIRDIR_TOGGLED((l)->lineno) ? LN_SPECIAL_STAIRDIR_BIT : 0)))
+#define LN_SPECIAL(l) (LN_SPECIAL_CLEARED((l)->lineno) ? 0 : LN_SPECIAL_BASE(l))
+#define LN_CLEAR_SPECIAL(l) \
+    (_g->line_special_cleared[LN_SPECIAL_WORD((l)->lineno)] |= LN_SPECIAL_MASK((l)->lineno))
+#define LN_TOGGLE_SPECIAL_STAIRDIR(l) \
+    (_g->line_special_stairdir_toggled[LN_SPECIAL_WORD((l)->lineno)] ^= LN_SPECIAL_MASK((l)->lineno))
 #define LN_VCOUNT(l) (_g->linedata[(l)->lineno].validcount)
 #define LN_RVCOUNT(l) (_g->linedata[(l)->lineno].r_validcount)
 #define LN_RFLAGS(l) (_g->linedata[(l)->lineno].r_flags)

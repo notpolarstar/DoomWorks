@@ -266,3 +266,19 @@ static void cheat_fps()
 		_g->player.message = STSTR_FPSOFF;
 	}
 }
+
+void C_TriggerGodCheat(void)
+{
+    if (_g->gamestate != GS_LEVEL)
+        return;
+
+    cheat_god();
+}
+
+void C_TriggerExitLevelCheat(void)
+{
+    if (_g->gamestate != GS_LEVEL)
+        return;
+
+    cheat_exit();
+}

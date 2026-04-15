@@ -194,7 +194,7 @@ void P_ChangeSwitchTexture (const line_t* line, int useAgain)
 
     /* don't zero line->special until after exit switch test */
     if (!useAgain)
-        LN_SPECIAL(line) = 0;
+        LN_CLEAR_SPECIAL(line);
 
     /* search for a texture to change */
     texture = NULL;
@@ -360,7 +360,7 @@ P_UseSpecialLine
         case PushOnce:
           if (!side)
             if (linefunc(line))
-              LN_SPECIAL(line) = 0;
+              LN_CLEAR_SPECIAL(line);
           return true;
         case PushMany:
           if (!side)

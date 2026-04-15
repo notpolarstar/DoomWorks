@@ -100,7 +100,7 @@ static void P_RecursiveSound(sector_t *sec, int soundblocks,
   for (i=0; i<sec->linecount; i++)
     {
       sector_t *other;
-      const line_t *check = sec->lines[i];
+      const line_t *check = SECTOR_LINE(sec, i);
 
       if (!(check->flags & ML_TWOSIDED))
         continue;
@@ -2179,4 +2179,3 @@ void A_RandomJump(mobj_t *mo)
   if (P_Random() < mo->state->misc2)
     P_SetMobjState(mo, mo->state->misc1);
 }
-

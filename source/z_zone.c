@@ -37,16 +37,15 @@
 
 #if USE_SYSTEM_ALLOCATOR
 
-#define SYSALLOC_MAGIC 0x5A4D414Cu
+#define SYSALLOC_MAGIC 0x414Cu
 
 typedef struct sysallocblock_s
 {
-    uint32_t magic;
-    size_t size;
-    int tag;
+    uint32_t size;
+    uint16_t tag;
+    uint16_t magic;
     void** user;
     struct sysallocblock_s* next;
-    struct sysallocblock_s* prev;
 } sysallocblock_t;
 
 static sysallocblock_t* s_sysalloc_head = NULL;
@@ -56,13 +55,15 @@ static int running_count = 0;
 
 static void Z_SysAlloc_Unlink(sysallocblock_t* block)
 {
-    if (block->prev != NULL)
-        block->prev->next = block->next;
-    else
-        s_sysalloc_head = block->next;
+    sysallocblock_t** link = &s_sysalloc_head;
 
-    if (block->next != NULL)
-        block->next->prev = block->prev;
+    while (*link != NULL && *link != block)
+        link = &(*link)->next;
+
+    if (*link == NULL)
+        I_Error("Z_SysAlloc_Unlink: block not found");
+
+    *link = block->next;
 }
 
 void Z_Init(void)
@@ -81,6 +82,11 @@ unsigned int Z_GetFreeMemory(void)
     return 0;
 }
 
+unsigned int Z_GetAllocatedMemory(void)
+{
+    return running_count > 0 ? (unsigned int)running_count : 0;
+}
+
 void* Z_Malloc(int size, int tag, void** user)
 {
     sysallocblock_t* block;
@@ -96,14 +102,11 @@ void* Z_Malloc(int size, int tag, void** user)
         I_Error("Z_Malloc(system): failed allocation of %i bytes\nUsed: %d bytes", (int)aligned_size, running_count);
     }
 
-    block->magic = SYSALLOC_MAGIC;
     block->size = aligned_size;
-    block->tag = tag;
+    block->tag = (uint16_t)tag;
+    block->magic = SYSALLOC_MAGIC;
     block->user = user ? user : (void**)2;
-    block->prev = NULL;
     block->next = s_sysalloc_head;
-    if (s_sysalloc_head != NULL)
-        s_sysalloc_head->prev = block;
     s_sysalloc_head = block;
 
     if (user)
@@ -152,15 +155,11 @@ void Z_FreeTags(int lowtag, int hightag)
 void Z_CheckHeap(void)
 {
     sysallocblock_t* block = s_sysalloc_head;
-    sysallocblock_t* prev = NULL;
 
     while (block != NULL)
     {
         if (block->magic != SYSALLOC_MAGIC)
             I_Error("Z_CheckHeap(system): bad magic");
-        if (block->prev != prev)
-            I_Error("Z_CheckHeap(system): broken back link");
-        prev = block;
         block = block->next;
     }
 }
@@ -371,6 +370,16 @@ unsigned int Z_GetFreeMemory(void)
     }
 
     return total;
+}
+
+unsigned int Z_GetAllocatedMemory(void)
+{
+    unsigned int free_bytes = Z_GetFreeMemory();
+
+    if (s_zone_heap_size <= free_bytes)
+        return 0;
+
+    return s_zone_heap_size - free_bytes;
 }
 
 

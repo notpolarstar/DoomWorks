@@ -596,7 +596,7 @@ int EV_VerticalDoor
     case 33:
     case 34:
       door->type = dopen;
-      LN_SPECIAL(line) = 0;
+      LN_CLEAR_SPECIAL(line);
       break;
 
     case 117: // blazing door raise
@@ -605,7 +605,7 @@ int EV_VerticalDoor
       break;
     case 118: // blazing door open
       door->type = blazeOpen;
-      LN_SPECIAL(line) = 0;
+      LN_CLEAR_SPECIAL(line);
       door->speed = VDOORSPEED*4;
       break;
 

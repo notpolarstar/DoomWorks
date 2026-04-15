@@ -368,9 +368,6 @@ int R_LoadTextureByName(const char* tex_name)
         return NO_TEXTURE;
     }
 
-
-    R_GetTexture(tnum);
-
     return tnum;
 }
 

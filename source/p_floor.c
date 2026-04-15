@@ -751,9 +751,10 @@ int EV_BuildStairs
 
       for (i = 0;i < sec->linecount;i++)
       {          
-        sector_t* tsec = LN_FRONTSECTOR((sec->lines[i]));
+        const line_t* sline = SECTOR_LINE(sec, i);
+        sector_t* tsec = LN_FRONTSECTOR(sline);
         int newsecnum;
-        if ( !((sec->lines[i])->flags & ML_TWOSIDED) )
+        if (!(sline->flags & ML_TWOSIDED))
           continue;
 
         newsecnum = tsec-_g->sectors;
@@ -761,7 +762,7 @@ int EV_BuildStairs
         if (secnum != newsecnum)
           continue;
 
-        tsec = LN_BACKSECTOR((sec->lines[i]));
+        tsec = LN_BACKSECTOR(sline);
         if (!tsec) continue;     //jff 5/7/98 if no backside, continue
         newsecnum = tsec - _g->sectors;
 
@@ -832,7 +833,7 @@ int EV_DoDonut(const line_t*  line)
     if (P_SectorActive(floor_special,s1)) //jff 2/22/98
       continue;
 
-    s2 = getNextSector(s1->lines[0],s1);  // s2 is pool's sector
+    s2 = getNextSector(SECTOR_LINE(s1, 0), s1);  // s2 is pool's sector
     if (!s2) continue;                    // note lowest numbered line around
                                           // pillar must be two-sided
 
@@ -846,12 +847,14 @@ int EV_DoDonut(const line_t*  line)
     {
 
 
-        if (!LN_BACKSECTOR((s2->lines[i])) || LN_BACKSECTOR((s2->lines[i])) == s1)
+        const line_t* sline = SECTOR_LINE(s2, i);
+
+        if (!LN_BACKSECTOR(sline) || LN_BACKSECTOR(sline) == s1)
             continue;
 
       rtn = 1; //jff 1/26/98 no donut action - no switch change on return
 
-      s3 = LN_BACKSECTOR((s2->lines[i]));      // s3 is model sector for changes
+      s3 = LN_BACKSECTOR(sline);      // s3 is model sector for changes
 
       //  Spawn rising slime
       floor = Z_Malloc (sizeof(*floor), PU_LEVSPEC, 0);

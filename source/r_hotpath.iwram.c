@@ -67,6 +67,44 @@
 
 #include "gba_functions.h"
 
+#if defined(NUMWORKS) && PLATFORM_DEVICE
+#define GBADOOM_MAX_DYNAMIC_VISPLANES 24
+#else
+#define GBADOOM_MAX_DYNAMIC_VISPLANES 64
+#endif
+
+static boolean s_visplane_cap_warned = false;
+
+static int R_CountVisplanes(void)
+{
+    int count = 0;
+
+    for (int i = 0; i < MAXVISPLANES; i++)
+    {
+        for (visplane_t* p = _g->visplanes[i]; p != NULL; p = p->next)
+            count++;
+    }
+
+    for (visplane_t* p = _g->freetail; p != NULL; p = p->next)
+        count++;
+
+    return count;
+}
+
+static visplane_t* R_FindFallbackVisplane(unsigned preferred_hash)
+{
+    if (_g->visplanes[preferred_hash] != NULL)
+        return _g->visplanes[preferred_hash];
+
+    for (int i = 0; i < MAXVISPLANES; i++)
+    {
+        if (_g->visplanes[i] != NULL)
+            return _g->visplanes[i];
+    }
+
+    return NULL;
+}
+
 
 //#define static
 
@@ -1675,7 +1713,11 @@ static visplane_t *new_visplane(unsigned hash)
     visplane_t *check = _g->freetail;
 
     if (!check)
+    {
+        if (R_CountVisplanes() >= GBADOOM_MAX_DYNAMIC_VISPLANES)
+            return NULL;
         check = Z_Calloc(1, sizeof(visplane_t), PU_LEVEL, NULL);
+    }
     else
     {
         if (!(_g->freetail = _g->freetail->next))
@@ -1706,6 +1748,22 @@ static visplane_t *R_FindPlane(fixed_t height, int picnum, int lightlevel)
             return check;
 
     check = new_visplane(hash);         // killough
+    if (!check)
+    {
+        check = R_FindFallbackVisplane(hash);
+        if (check)
+        {
+            if (!s_visplane_cap_warned)
+            {
+                lprintf(LO_WARN, "R_FindPlane: visplane cap hit (%d), merging planes\n",
+                    GBADOOM_MAX_DYNAMIC_VISPLANES);
+                s_visplane_cap_warned = true;
+            }
+            return check;
+        }
+
+        I_Error("R_FindPlane: no visplane available");
+    }
 
     check->height = height;
     check->picnum = picnum;
@@ -1729,6 +1787,25 @@ static visplane_t *R_DupPlane(const visplane_t *pl, int start, int stop)
 {
     unsigned hash = visplane_hash(pl->picnum, pl->lightlevel, pl->height);
     visplane_t *new_pl = new_visplane(hash);
+
+    if (new_pl == NULL)
+    {
+        visplane_t *reuse = (visplane_t *)pl;
+
+        if (!s_visplane_cap_warned)
+        {
+            lprintf(LO_WARN, "R_DupPlane: visplane cap hit (%d), reusing plane\n",
+                GBADOOM_MAX_DYNAMIC_VISPLANES);
+            s_visplane_cap_warned = true;
+        }
+
+        if (start < reuse->minx)
+            reuse->minx = start;
+        if (stop > reuse->maxx)
+            reuse->maxx = stop;
+
+        return reuse;
+    }
 
     new_pl->height = pl->height;
     new_pl->picnum = pl->picnum;

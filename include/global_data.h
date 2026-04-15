@@ -465,6 +465,8 @@ subsector_t *subsectors;
 int      numlines;
 const line_t   *lines;
 linedata_t* linedata;
+byte* line_special_cleared;
+byte* line_special_stairdir_toggled;
 
 
 int      numsides;

@@ -744,16 +744,16 @@ manual_stair:
       {
 
 
-        if ( !LN_BACKSECTOR((sec->lines[i])) )
+        if ( !LN_BACKSECTOR(SECTOR_LINE(sec, i)) )
           continue;
 
-        tsec = LN_FRONTSECTOR((sec->lines[i]));
+        tsec = LN_FRONTSECTOR(SECTOR_LINE(sec, i));
         newsecnum = tsec-_g->sectors;
 
         if (secnum != newsecnum)
           continue;
 
-        tsec = LN_BACKSECTOR((sec->lines[i]));
+        tsec = LN_BACKSECTOR(SECTOR_LINE(sec, i));
         newsecnum = tsec - _g->sectors;
 
         if (!Igno && tsec->floorpic != texture)
@@ -792,7 +792,7 @@ manual_stair:
   }
   // retriggerable generalized stairs build up or down alternately
   if (rtn)
-    LN_SPECIAL(line) ^= StairDirection; // alternate dir on succ activations
+    LN_TOGGLE_SPECIAL_STAIRDIR(line); // alternate dir on successive activations
   return rtn;
 }
 

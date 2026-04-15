@@ -43,6 +43,23 @@
 
 #include "global_data.h"
 
+#if defined(NUMWORKS) && PLATFORM_DEVICE
+#define GBADOOM_COMPACT_BLOCKLINKS 1
+#else
+#define GBADOOM_COMPACT_BLOCKLINKS 0
+#endif
+
+static int P_BlockIndexForThing(const mobj_t* thing)
+{
+    int blockx = (thing->x - _g->bmaporgx) >> MAPBLOCKSHIFT;
+    int blocky = (thing->y - _g->bmaporgy) >> MAPBLOCKSHIFT;
+
+    if (blockx < 0 || blockx >= _g->bmapwidth || blocky < 0 || blocky >= _g->bmapheight)
+        return -1;
+
+    return blocky * _g->bmapwidth + blockx;
+}
+
 //
 // P_AproxDistance
 // Gives an estimation of distance (not exact)
@@ -306,7 +323,11 @@ void P_SetThingPosition(mobj_t *thing)
         // killough 8/11/98: simpler scheme using pointer-to-pointer prev
         // pointers, allows head nodes to be treated like everything else
 
+#if GBADOOM_COMPACT_BLOCKLINKS
+        mobj_t **link = &_g->blocklinks[0];
+#else
         mobj_t **link = &_g->blocklinks[blocky*_g->bmapwidth+blockx];
+#endif
         mobj_t *bnext = *link;
         if ((thing->bnext = bnext))
           bnext->bprev = &thing->bnext;
@@ -389,9 +410,18 @@ boolean P_BlockThingsIterator(int x, int y, boolean func(mobj_t*))
 {
   mobj_t *mobj;
   if (!(x<0 || y<0 || x>=_g->bmapwidth || y>=_g->bmapheight))
+#if GBADOOM_COMPACT_BLOCKLINKS
+  {
+    const int wanted = y * _g->bmapwidth + x;
+    for (mobj = _g->blocklinks[0]; mobj; mobj = mobj->bnext)
+      if (P_BlockIndexForThing(mobj) == wanted && !func(mobj))
+        return false;
+  }
+#else
     for (mobj = _g->blocklinks[y*_g->bmapwidth+x]; mobj; mobj = mobj->bnext)
       if (!func(mobj))
         return false;
+#endif
   return true;
 }
 

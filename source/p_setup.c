@@ -233,17 +233,14 @@ static void P_LoadThings (int lump)
 
 static void P_LoadLineDefs (int lump)
 {
-    int  i;
-
     _g->numlines = W_LumpLength (lump) / sizeof(line_t);
     _g->lines = W_CacheLumpNum (lump);
 
     _g->linedata = Z_Calloc(_g->numlines,sizeof(linedata_t),PU_LEVEL,0);
-
-    for (i=0; i<_g->numlines; i++)
-    {
-        _g->linedata[i].special = _g->lines[i].const_special;
-    }
+    _g->line_special_cleared =
+        Z_Calloc((_g->numlines + 7) / 8, sizeof(*_g->line_special_cleared), PU_LEVEL, 0);
+    _g->line_special_stairdir_toggled =
+        Z_Calloc((_g->numlines + 7) / 8, sizeof(*_g->line_special_stairdir_toggled), PU_LEVEL, 0);
 }
 
 // killough 4/4/98: delay using sidedefs until they are loaded
@@ -406,10 +403,6 @@ static void P_LoadSideDefs2(int lump)
             sd->midtexture = msd->midtexture;
             sd->toptexture = msd->toptexture;
             sd->bottomtexture = msd->bottomtexture;
-
-            R_GetTexture(sd->midtexture);
-            R_GetTexture(sd->toptexture);
-            R_GetTexture(sd->bottomtexture);
         }
     }
 }
@@ -458,8 +451,15 @@ static void P_LoadBlockMap (int lump)
     _g->bmapheight = _g->blockmaplump[3];
 
 
+#if defined(NUMWORKS) && PLATFORM_DEVICE
+    // Compact mode: keep one global block chain head and filter by block on iteration.
+    _g->blocklinks = Z_Calloc(1, sizeof(*_g->blocklinks), PU_LEVEL, 0);
+    lprintf(LO_INFO, "P_LoadBlockMap: compact thing links enabled (saved %d bytes)\n",
+        (int)((_g->bmapwidth * _g->bmapheight - 1) * (int)sizeof(*_g->blocklinks)));
+#else
     // clear out mobj chains - CPhipps - use calloc
     _g->blocklinks = Z_Calloc (_g->bmapwidth*_g->bmapheight,sizeof(*_g->blocklinks),PU_LEVEL,0);
+#endif
 
     _g->blockmap = _g->blockmaplump+4;
 
@@ -515,9 +515,18 @@ static void P_LoadReject(int lumpnum)
 // figgi 09/18/00 -- adapted for gl-nodes
 
 // cph - convenient sub-function
-static void P_AddLineToSector(const line_t* li, sector_t* sector)
+static void P_AddLineToSector(unsigned int line_index, const line_t* li, sector_t* sector)
 {
+#if defined(NUMWORKS) && PLATFORM_DEVICE
+  if (line_index >= (unsigned int)_g->numlines)
+    I_Error("P_AddLineToSector: invalid line index (%u/%d)", line_index, _g->numlines);
+  if (line_index > 0xFFFFu)
+    I_Error("P_AddLineToSector: line index overflow (%u)", line_index);
+  sector->lines[sector->linecount++] = (unsigned short)line_index;
+#else
+  (void)line_index;
   sector->lines[sector->linecount++] = li;
+#endif
 }
 
 // modified to return totallines (needed by P_LoadReject)
@@ -557,7 +566,11 @@ static int P_GroupLines (void)
     }
 
     {  // allocate line tables for each sector
-        const line_t **linebuffer = Z_Malloc(total*sizeof(line_t *), PU_LEVEL, 0);
+#if defined(NUMWORKS) && PLATFORM_DEVICE
+        unsigned short *linebuffer = Z_Malloc(total * sizeof(*linebuffer), PU_LEVEL, 0);
+#else
+        const line_t **linebuffer = Z_Malloc(total * sizeof(*linebuffer), PU_LEVEL, 0);
+#endif
 
         // e6y: REJECT overrun emulation code
         // moved to P_LoadReject
@@ -573,9 +586,9 @@ static int P_GroupLines (void)
     // Enter those lines
     for (i=0,li=_g->lines; i<_g->numlines; i++, li++)
     {
-        P_AddLineToSector(li, LN_FRONTSECTOR(li));
+        P_AddLineToSector((unsigned int)i, li, LN_FRONTSECTOR(li));
         if (LN_BACKSECTOR(li) && LN_BACKSECTOR(li) != LN_FRONTSECTOR(li))
-            P_AddLineToSector(li, LN_BACKSECTOR(li));
+            P_AddLineToSector((unsigned int)i, li, LN_BACKSECTOR(li));
     }
 
     for (i=0, sector = _g->sectors; i<_g->numsectors; i++, sector++)
@@ -585,8 +598,9 @@ static int P_GroupLines (void)
 
         for(int l = 0; l < sector->linecount; l++)
         {
-            M_AddToBox (bbox, sector->lines[l]->v1.x, sector->lines[l]->v1.y);
-            M_AddToBox (bbox, sector->lines[l]->v2.x, sector->lines[l]->v2.y);
+            const line_t* sl = SECTOR_LINE(sector, l);
+            M_AddToBox (bbox, sl->v1.x, sl->v1.y);
+            M_AddToBox (bbox, sl->v2.x, sl->v2.y);
         }
 
         sector->soundorg.x = bbox[BOXRIGHT]/2+bbox[BOXLEFT]/2;
