@@ -28,7 +28,9 @@ static const unsigned int kSourceStride = SCREENWIDTH * 2;
 
 static byte s_palette[256 * 3];
 static unsigned short s_indexed_frame_words[SCREENWIDTH * SCREENHEIGHT];
-static eadk_color_t s_rgb565_line[kSourceWidth];
+static eadk_color_t s_rgb565_line[EADK_SCREEN_WIDTH];
+static unsigned short s_scale_x[EADK_SCREEN_WIDTH];
+static unsigned short s_scale_y[EADK_SCREEN_HEIGHT];
 static eadk_keyboard_state_t s_prev_keyboard_state = 0;
 
 static const int kDebugLineCount = 6;
@@ -45,6 +47,26 @@ static const int kOverlayTopPadding = 2;
 static void DrawDebugOverlay(void);
 static void DrawZoneOverlay(void);
 static void ShowDebugChoicePrompt(void);
+static void BuildFullscreenScaleLUTs(void);
+
+static void BuildFullscreenScaleLUTs(void)
+{
+    for (unsigned int x = 0; x < EADK_SCREEN_WIDTH; x++)
+    {
+        unsigned int sx = (x * kSourceWidth) / EADK_SCREEN_WIDTH;
+        if (sx >= kSourceWidth)
+            sx = kSourceWidth - 1;
+        s_scale_x[x] = (unsigned short)sx;
+    }
+
+    for (unsigned int y = 0; y < EADK_SCREEN_HEIGHT; y++)
+    {
+        unsigned int sy = (y * kSourceHeight) / EADK_SCREEN_HEIGHT;
+        if (sy >= kSourceHeight)
+            sy = kSourceHeight - 1;
+        s_scale_y[y] = (unsigned short)sy;
+    }
+}
 
 static void ClearOverlayBand(void)
 {
@@ -297,6 +319,7 @@ void I_InitScreen_e32()
     memset(s_palette, 0, sizeof(s_palette));
     memset(s_indexed_frame_words, 0, sizeof(s_indexed_frame_words));
     memset(s_rgb565_line, 0, sizeof(s_rgb565_line));
+    BuildFullscreenScaleLUTs();
     s_prev_keyboard_state = 0;
     memset(s_debug_lines, 0, sizeof(s_debug_lines));
     s_debug_line_count = 0;
@@ -348,19 +371,21 @@ void I_FinishUpdate_e32(const byte* srcBuffer, const byte* pallete, const unsign
     const byte* indexed = srcBuffer != NULL ? srcBuffer : (const byte*)s_indexed_frame_words;
     const byte* active_palette = pallete != NULL ? pallete : s_palette;
 
+    // eadk_display_wait_for_vblank();
+
     eadk_rect_t row_rect;
-    row_rect.width = (uint16_t)kSourceWidth;
+    row_rect.width = EADK_SCREEN_WIDTH;
     row_rect.height = 1;
-    row_rect.x = (uint16_t)((EADK_SCREEN_WIDTH - kSourceWidth) / 2);
+    row_rect.x = 0;
 
-    for (unsigned int y = 0; y < kSourceHeight; y++)
+    for (unsigned int y = 0; y < EADK_SCREEN_HEIGHT; y++)
     {
-        const byte* row = &indexed[y * kSourceStride];
-        row_rect.y = (uint16_t)(((EADK_SCREEN_HEIGHT - kSourceHeight) / 2) + y);
+        const byte* row = &indexed[s_scale_y[y] * kSourceStride];
+        row_rect.y = (uint16_t)y;
 
-        for (unsigned int x = 0; x < kSourceWidth; x++)
+        for (unsigned int x = 0; x < EADK_SCREEN_WIDTH; x++)
         {
-            unsigned int palette_index = row[x] * 3;
+            unsigned int palette_index = row[s_scale_x[x]] * 3;
             unsigned int r = active_palette[palette_index + 0];
             unsigned int g = active_palette[palette_index + 1];
             unsigned int b = active_palette[palette_index + 2];
@@ -369,7 +394,6 @@ void I_FinishUpdate_e32(const byte* srcBuffer, const byte* pallete, const unsign
 
         eadk_display_push_rect(row_rect, s_rgb565_line);
     }
-    eadk_display_wait_for_vblank();
 
     if (s_debug_overlay_visible)
     {
