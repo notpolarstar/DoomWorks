@@ -58,10 +58,10 @@ endif
 
 .PHONY: build run clean
 
-$(IWAD_C_FILE): $(WAD_ABS) $(CURDIR)/GbaWadUtil/GbaWadUtil
+$(IWAD_C_FILE): $(WAD_ABS) $(CURDIR)/GbaWadUtil/gbawadutil.py
 	@mkdir -p $(dir $@)
 	@echo "[GBADOOM] Embedding $(WAD_BASENAME) into $(notdir $@)"
-	@$(CURDIR)/GbaWadUtil/GbaWadUtil -in "$(WAD_ABS)" -cfile "$@"
+	@$(CURDIR)/GbaWadUtil/gbawadutil.py -in "$(WAD_ABS)" -cfile "$@"
 
 ifeq ($(PLATFORM),device)
 ifeq ($(USE_EXTERNAL_IWAD),1)
