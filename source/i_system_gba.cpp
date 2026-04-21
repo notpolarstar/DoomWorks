@@ -243,22 +243,22 @@ void I_ClearWindow_e32()
 
 //**************************************************************************************
 
-unsigned short* I_GetBackBuffer()
+byte* I_GetBackBuffer()
 {
     if(REG_DISPCNT & DCNT_PAGE)
-        return (unsigned short*)VID_PAGE1;
+        return (byte*)VID_PAGE1;
 
-    return (unsigned short*)VID_PAGE2;
+    return (byte*)VID_PAGE2;
 }
 
 //**************************************************************************************
 
-unsigned short* I_GetFrontBuffer()
+byte* I_GetFrontBuffer()
 {
     if(REG_DISPCNT & DCNT_PAGE)
-        return (unsigned short*)VID_PAGE2;
+        return (byte*)VID_PAGE2;
 
-    return (unsigned short*)VID_PAGE1;
+    return (byte*)VID_PAGE1;
 }
 
 //**************************************************************************************
@@ -269,7 +269,7 @@ void I_CreateWindow_e32()
     //Bit5 = unlocked vram at h-blank.
     SetMode(MODE_4 | BG2_ENABLE | BIT(5));
 
-    unsigned short* bb = I_GetBackBuffer();
+    byte* bb = I_GetBackBuffer();
 
     memset(bb, 0, 240*160);
 

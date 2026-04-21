@@ -60,6 +60,103 @@ static int P_BlockIndexForThing(const mobj_t* thing)
     return blocky * _g->bmapwidth + blockx;
 }
 
+static unsigned int P_ReadU16LE_Byte(const byte* p)
+{
+    return ((unsigned int)p[0]) | ((unsigned int)p[1] << 8);
+}
+
+static unsigned int P_BitCount8(unsigned int v)
+{
+    v &= 0xFFu;
+    v = v - ((v >> 1) & 0x55u);
+    v = (v & 0x33u) + ((v >> 2) & 0x33u);
+    return (v + (v >> 4)) & 0x0Fu;
+}
+
+static boolean P_VisitBlockLineByIndex(int lineno, boolean func(const line_t*), int vcount)
+{
+    linedata_t *lt;
+    const line_t *ld;
+
+    if ((unsigned int)lineno >= (unsigned int)_g->numlines)
+        return true;
+
+    lt = &_g->linedata[lineno];
+    if (lt->validcount == vcount)
+        return true;
+
+    lt->validcount = vcount;
+    ld = &_g->lines[lineno];
+    return func(ld);
+}
+
+static boolean P_BlockLinesIteratorCompact(int x, int y, boolean func(const line_t*))
+{
+    const byte *row;
+    const byte *bitmap;
+    const byte *desc_ptr;
+    unsigned int desc_count;
+    unsigned int bitmap_bytes = _g->blockmap_compact_bitmap_bytes;
+    unsigned int byte_index;
+    unsigned int bit_mask;
+    unsigned int desc_index = 0;
+    unsigned int b;
+    unsigned int descriptor;
+    int vcount = _g->validcount;
+
+    row = _g->blockmap_compact_data + P_ReadU16LE_Byte(_g->blockmap_compact_rowofs + (y * 2));
+    if (row + 2 > _g->blockmap_compact_end)
+        I_Error("P_BlockLinesIteratorCompact: truncated row header");
+
+    desc_count = P_ReadU16LE_Byte(row);
+    bitmap = row + 2;
+    desc_ptr = bitmap + bitmap_bytes;
+    if (desc_ptr + (desc_count * 2u) > _g->blockmap_compact_lists)
+        I_Error("P_BlockLinesIteratorCompact: row descriptor overflow");
+
+    byte_index = (unsigned int)x >> 3;
+    bit_mask = 1u << ((unsigned int)x & 7u);
+    if ((bitmap[byte_index] & bit_mask) == 0)
+        return true;
+
+    for (b = 0; b < byte_index; b++)
+        desc_index += P_BitCount8(bitmap[b]);
+    desc_index += P_BitCount8(bitmap[byte_index] & (bit_mask - 1u));
+
+    if (desc_index >= desc_count)
+        I_Error("P_BlockLinesIteratorCompact: invalid descriptor index %u/%u", desc_index, desc_count);
+
+    descriptor = P_ReadU16LE_Byte(desc_ptr + (desc_index * 2u));
+    if (descriptor & 0x8000u)
+    {
+        int lineno = (int)(descriptor & 0x7FFFu);
+        return P_VisitBlockLineByIndex(lineno, func, vcount);
+    }
+    else
+    {
+        const byte *list = _g->blockmap_compact_lists + ((unsigned int)descriptor << 1);
+        unsigned int count;
+        unsigned int i;
+
+        if (list + 2 > _g->blockmap_compact_end)
+            I_Error("P_BlockLinesIteratorCompact: list offset overflow");
+
+        count = P_ReadU16LE_Byte(list);
+        list += 2;
+        if (list + (count * 2u) > _g->blockmap_compact_end)
+            I_Error("P_BlockLinesIteratorCompact: truncated list");
+
+        for (i = 0; i < count; i++)
+        {
+            int lineno = (int)P_ReadU16LE_Byte(list + (i * 2u));
+            if (!P_VisitBlockLineByIndex(lineno, func, vcount))
+                return false;
+        }
+    }
+
+    return true;
+}
+
 //
 // P_AproxDistance
 // Gives an estimation of distance (not exact)
@@ -363,6 +460,9 @@ boolean P_BlockLinesIterator(int x, int y, boolean func(const line_t*))
     if (x<0 || y<0 || x>=_g->bmapwidth || y>=_g->bmapheight)
         return true;
 
+    if (_g->blockmap_is_compact)
+        return P_BlockLinesIteratorCompact(x, y, func);
+
     const int offset = _g->blockmap[y*_g->bmapwidth+x];
     const short* list = _g->blockmaplump+offset;     // original was reading         // phares
 
@@ -382,19 +482,7 @@ boolean P_BlockLinesIterator(int x, int y, boolean func(const line_t*))
     {
         const int lineno = *list;
 
-        if ((unsigned int)lineno >= (unsigned int)_g->numlines)
-            continue;
-
-        linedata_t *lt = &_g->linedata[lineno];
-
-        if (lt->validcount == vcount)
-            continue;       // line has already been checked
-
-        lt->validcount = vcount;
-
-        const line_t *ld = &_g->lines[lineno];
-
-        if (!func(ld))
+        if (!P_VisitBlockLineByIndex(lineno, func, vcount))
             return false;
     }
 

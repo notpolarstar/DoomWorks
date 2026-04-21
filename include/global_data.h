@@ -493,6 +493,12 @@ const short      *blockmaplump;          // was short -- killough
 
 fixed_t   bmaporgx, bmaporgy;     // origin of block map
 boolean   blockmap_has_leading_zero; // true when lists start with the classic 0 delimiter
+boolean   blockmap_is_compact; // true when using custom row-compressed blockmap format
+const byte *blockmap_compact_data; // raw compact blockmap bytes
+const byte *blockmap_compact_rowofs; // uint16 row offset table
+const byte *blockmap_compact_lists; // packed list storage base
+const byte *blockmap_compact_end; // end pointer for bounds checks
+unsigned short blockmap_compact_bitmap_bytes; // bytes of row occupancy bitmap
 
 mobj_t    **blocklinks;           // for thing chains
 

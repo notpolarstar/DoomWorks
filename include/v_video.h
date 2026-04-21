@@ -73,7 +73,7 @@ typedef enum
 
 typedef struct
 {
-  unsigned short *data;// pointer to the screen content
+  byte *data;           // pointer to 8-bit indexed screen content
   short width;           // the width of the surface
   short height;          // the height of the surface, used when mallocing
 } screeninfo_t;

@@ -27,7 +27,9 @@ static const unsigned int kSourceHeight = SCREENHEIGHT;
 static const unsigned int kSourceStride = SCREENWIDTH * 2;
 
 static byte s_palette[256 * 3];
-static unsigned short s_indexed_frame_words[SCREENWIDTH * SCREENHEIGHT];
+static eadk_color_t s_palette565[256];
+static const byte* s_palette_source = NULL;
+static byte s_indexed_frame[SCREENWIDTH * SCREENHEIGHT * 2];
 static eadk_color_t s_rgb565_line[EADK_SCREEN_WIDTH];
 static unsigned short s_scale_x[EADK_SCREEN_WIDTH];
 static unsigned short s_scale_y[EADK_SCREEN_HEIGHT];
@@ -196,6 +198,15 @@ static void DrawWrappedText(const char* text, int x, int y, int max_width, int m
 static inline eadk_color_t RGB888To565(unsigned int r, unsigned int g, unsigned int b)
 {
     return (eadk_color_t)(((r & 0xF8U) << 8) | ((g & 0xFCU) << 3) | (b >> 3));
+}
+
+static void RebuildPalette565(const byte* palette)
+{
+    for (unsigned int i = 0; i < 256; i++)
+    {
+        const unsigned int p = i * 3;
+        s_palette565[i] = RGB888To565(palette[p + 0], palette[p + 1], palette[p + 2]);
+    }
 }
 
 static void PostKeyEvent(evtype_t type, int key)
@@ -416,7 +427,9 @@ static void ShowDebugChoicePrompt(void)
 void I_InitScreen_e32()
 {
     memset(s_palette, 0, sizeof(s_palette));
-    memset(s_indexed_frame_words, 0, sizeof(s_indexed_frame_words));
+    memset(s_palette565, 0, sizeof(s_palette565));
+    s_palette_source = NULL;
+    memset(s_indexed_frame, 0, sizeof(s_indexed_frame));
     memset(s_rgb565_line, 0, sizeof(s_rgb565_line));
     BuildFullscreenScaleLUTs();
     s_prev_keyboard_state = 0;
@@ -434,7 +447,7 @@ void I_InitScreen_e32()
 
 void I_CreateBackBuffer_e32()
 {
-    memset(s_indexed_frame_words, 0, sizeof(s_indexed_frame_words));
+    memset(s_indexed_frame, 0, sizeof(s_indexed_frame));
 }
 
 int I_GetVideoWidth_e32()
@@ -452,17 +465,19 @@ void I_SetPallete_e32(const byte* pallete)
     if (pallete != NULL)
     {
         memcpy(s_palette, pallete, sizeof(s_palette));
+        RebuildPalette565(s_palette);
+        s_palette_source = pallete;
     }
 }
 
-unsigned short* I_GetBackBuffer()
+byte* I_GetBackBuffer()
 {
-    return s_indexed_frame_words;
+    return s_indexed_frame;
 }
 
-unsigned short* I_GetFrontBuffer()
+byte* I_GetFrontBuffer()
 {
-    return s_indexed_frame_words;
+    return s_indexed_frame;
 }
 
 void I_FinishUpdate_e32(const byte* srcBuffer, const byte* pallete, const unsigned int width, const unsigned int height)
@@ -470,8 +485,12 @@ void I_FinishUpdate_e32(const byte* srcBuffer, const byte* pallete, const unsign
     (void)width;
     (void)height;
 
-    const byte* indexed = srcBuffer != NULL ? srcBuffer : (const byte*)s_indexed_frame_words;
-    const byte* active_palette = pallete != NULL ? pallete : s_palette;
+    if (pallete != NULL && pallete != s_palette_source)
+    {
+        I_SetPallete_e32(pallete);
+    }
+
+    const byte* indexed = srcBuffer != NULL ? srcBuffer : s_indexed_frame;
 
     // eadk_display_wait_for_vblank();
 
@@ -487,11 +506,7 @@ void I_FinishUpdate_e32(const byte* srcBuffer, const byte* pallete, const unsign
 
         for (unsigned int x = 0; x < EADK_SCREEN_WIDTH; x++)
         {
-            unsigned int palette_index = row[s_scale_x[x]] * 3;
-            unsigned int r = active_palette[palette_index + 0];
-            unsigned int g = active_palette[palette_index + 1];
-            unsigned int b = active_palette[palette_index + 2];
-            s_rgb565_line[x] = RGB888To565(r, g, b);
+            s_rgb565_line[x] = s_palette565[row[s_scale_x[x]]];
         }
 
         eadk_display_push_rect(row_rect, s_rgb565_line);

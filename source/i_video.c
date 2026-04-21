@@ -84,7 +84,7 @@ void I_StartFrame (void)
 
 boolean I_StartDisplay(void)
 {
-    unsigned short* backbuffer = I_GetBackBuffer();
+    byte* backbuffer = I_GetBackBuffer();
 
     _g->screens[0].data = backbuffer;
 
@@ -158,7 +158,7 @@ void I_FinishUpdate (void)
         _g->newpal = NO_PALETTE_CHANGE;
 	}
 
-    I_FinishUpdate_e32((const byte*)_g->screens[0].data, _g->current_pallete, SCREENWIDTH, SCREENHEIGHT);
+    I_FinishUpdate_e32(_g->screens[0].data, _g->current_pallete, SCREENWIDTH, SCREENHEIGHT);
 
 // #ifdef NUMWORKS
 //     if (first_present_checkpoint)

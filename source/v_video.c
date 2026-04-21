@@ -60,7 +60,8 @@ void V_DrawBackground(const char* flatname)
     const byte *src;
     int         lump;
 
-    unsigned short *dest = _g->screens[0].data;
+    byte *dest = _g->screens[0].data;
+    const int pitch = SCREENWIDTH * 2;
 
     // killough 4/17/98:
     src = W_CacheLumpNum(lump = _g->firstflat + R_FlatNumForName(flatname));
@@ -69,7 +70,7 @@ void V_DrawBackground(const char* flatname)
     {
         for(unsigned int x = 0; x < 240; x+=64)
         {
-            unsigned short* d = &dest[ ScreenYToOffset(y) + (x >> 1)];
+            byte* d = &dest[(y * pitch) + (int)x];
             const byte* s = &src[((y&63) * 64) + (x&63)];
 
             unsigned int len = 64;
@@ -101,7 +102,7 @@ void V_DrawPatch(int x, int y, int scrn, const patch_t* patch)
     const int   DY  = ((SCREENHEIGHT<<FRACBITS)+(FRACUNIT-1)) / 200;
     const int   DYI = (200<<FRACBITS) / SCREENHEIGHT;
 
-    byte* byte_topleft = (byte*)_g->screens[scrn].data;
+    byte* byte_topleft = _g->screens[scrn].data;
     const int byte_pitch = (SCREENPITCH * 2);
 
     const int left = ( x * DX ) >> FRACBITS;
@@ -144,9 +145,10 @@ void V_DrawPatch(int x, int y, int scrn, const patch_t* patch)
             // This is as fast as it gets.
             while (count--)
             {
-                unsigned short color = source[frac >> FRACBITS];
+                byte color = source[frac >> FRACBITS];
 
                 //The GBA must write in 16bits.
+#ifdef GBA
                 if(((uintptr_t)dest) & 1U)
                 {
                     //Odd addreses, we combine existing pixel with new one.
@@ -165,6 +167,9 @@ void V_DrawPatch(int x, int y, int scrn, const patch_t* patch)
 
                     *dest16 = ((color & 0xff) | (old & 0xff00));
                 }
+#else
+                *dest = color;
+#endif
 
                 dest += byte_pitch;
                 frac += fracstep;
@@ -260,7 +265,7 @@ void V_SetPalLump(int index)
 // CPhipps - New function to fill a rectangle with a given colour
 void V_FillRect(int x, int y, int width, int height, byte colour)
 {
-    byte* fb = (byte*)_g->screens[0].data;
+    byte* fb = _g->screens[0].data;
 
     byte* dest = &fb[(ScreenYToOffset(y) << 1) + x];
 
@@ -275,11 +280,12 @@ void V_FillRect(int x, int y, int width, int height, byte colour)
 
 static void V_PlotPixel(int x, int y, int color)
 {
-    byte* fb = (byte*)_g->screens[0].data;
+    byte* fb = _g->screens[0].data;
 
     byte* dest = &fb[(ScreenYToOffset(y) << 1) + x];
 
     //The GBA must write in 16bits.
+#ifdef GBA
     if(((uintptr_t)dest) & 1U)
     {
         //Odd addreses, we combine existing pixel with new one.
@@ -297,6 +303,9 @@ static void V_PlotPixel(int x, int y, int color)
 
         *dest16 = ((color & 0xff) | (old & 0xff00));
     }
+#else
+    *dest = (byte)color;
+#endif
 }
 
 //

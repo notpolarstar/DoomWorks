@@ -308,7 +308,7 @@ void ST_refreshBackground(void)
 {
     if (_g->st_statusbaron)
     {
-        const unsigned int st_offset = ((SCREENHEIGHT-ST_SCALED_HEIGHT)*120);
+        const unsigned int st_offset = ((SCREENHEIGHT - ST_SCALED_HEIGHT) * (SCREENWIDTH * 2));
 
         CpuBlockCopy(&_g->screens[0].data[st_offset], _g->stbarbg, _g->stbar_len);
     }

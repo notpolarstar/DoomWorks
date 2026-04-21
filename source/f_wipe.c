@@ -75,8 +75,8 @@ static int wipe_doMelt(int ticks)
 {
     boolean done = true;
 
-    unsigned short* backbuffer = I_GetBackBuffer();
-    unsigned short* frontbuffer = I_GetFrontBuffer();
+    unsigned short* backbuffer = (unsigned short*)I_GetBackBuffer();
+    unsigned short* frontbuffer = (unsigned short*)I_GetFrontBuffer();
 
     while (ticks--)
     {

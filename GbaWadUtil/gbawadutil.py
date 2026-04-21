@@ -45,6 +45,12 @@ COMPRESS_FLATS = False
 NODE_COMPACT_MAGIC = b"NDC0"
 NODE_COMPACT_HEADER_SIZE = 16
 NODE_COMPACT_ENTRY_SIZE = 16
+SSECTOR_COMPACT_MAGIC = b"SSC0"
+SSECTOR_COMPACT_HEADER_SIZE = 8
+SIDEDEF_VAR_MAGIC = b"SDV0"
+SIDEDEF_VAR_HEADER_SIZE = 8
+BLOCKMAP_COMPACT_MAGIC = b"BMC0"
+BLOCKMAP_COMPACT_HEADER_SIZE = 16
 SPRITE_START_MARKERS = {"S_START", "SS_START", "S1_START", "S2_START"}
 SPRITE_END_MARKERS = {"S_END", "SS_END", "S1_END", "S2_END"}
 FLAT_START_MARKERS = {"F_START", "FF_START", "F1_START", "F2_START"}
@@ -782,6 +788,7 @@ class WadProcessor:
         self.process_vertexes(lump_num)
         self.process_lines(lump_num)
         self.process_segs(lump_num)
+        self.process_ssectors(lump_num)
         self.process_sides(lump_num)
         self.process_sectors(lump_num)
         self.process_nodes(lump_num)
@@ -789,6 +796,12 @@ class WadProcessor:
         self.compress_map_runtime_lumps(lump_num)
         self.process_pnames()
         return True
+
+    def estimate_lump_storage_size(self, data):
+        compressed = huffman_compress_block(data)
+        if compressed is not None and len(compressed) + HUFF_MIN_SAVINGS <= len(data):
+            return len(compressed)
+        return len(data)
 
     def compress_map_runtime_lumps(self, lump_num):
         for offset in HUFF_COMPRESSIBLE_MAP_LUMP_OFFSETS:
@@ -1001,7 +1014,9 @@ class WadProcessor:
             return False
 
         side_count = sides.length // 30
-        out = bytearray(side_count * 12)
+        fixed_out = bytearray(side_count * 12)
+        var_out = bytearray(SIDEDEF_VAR_HEADER_SIZE)
+        struct.pack_into("<4sHH", var_out, 0, SIDEDEF_VAR_MAGIC, to_u16(side_count), 0)
 
         for i in range(side_count):
             textureoffset, rowoffset, toptexture, bottomtexture, midtexture, sector = struct.unpack_from(
@@ -1014,7 +1029,7 @@ class WadProcessor:
 
             struct.pack_into(
                 "<hhhhhh",
-                out,
+                fixed_out,
                 i * 12,
                 to_s16(textureoffset),
                 to_s16(rowoffset),
@@ -1024,7 +1039,150 @@ class WadProcessor:
                 to_s16(sector),
             )
 
-        return self.wad_file.replace_lump(sides_lump_num, Lump(sides.name, bytes(out)))
+            tex_off = to_s16(textureoffset)
+            row_off = to_s16(rowoffset)
+            top_u = to_u16(top_num)
+            bottom_u = to_u16(bottom_num)
+            mid_u = to_u16(mid_num)
+            sector_u = to_u16(sector)
+
+            desc0 = 0
+            desc1 = 0
+
+            if tex_off != 0:
+                desc0 |= 0x01
+                if tex_off < -128 or tex_off > 127:
+                    desc0 |= 0x02
+
+            if row_off != 0:
+                desc0 |= 0x04
+                if row_off < -128 or row_off > 127:
+                    desc0 |= 0x08
+
+            if top_u != 0:
+                desc0 |= 0x10
+                if top_u > 0xFF:
+                    desc0 |= 0x20
+
+            if bottom_u != 0:
+                desc0 |= 0x40
+                if bottom_u > 0xFF:
+                    desc0 |= 0x80
+
+            if mid_u != 0:
+                desc1 |= 0x01
+                if mid_u > 0xFF:
+                    desc1 |= 0x02
+
+            if sector_u > 0xFF:
+                desc1 |= 0x04
+
+            var_out.append(desc0)
+            var_out.append(desc1)
+
+            if desc0 & 0x01:
+                if desc0 & 0x02:
+                    var_out.extend(struct.pack("<h", tex_off))
+                else:
+                    var_out.append(tex_off & 0xFF)
+
+            if desc0 & 0x04:
+                if desc0 & 0x08:
+                    var_out.extend(struct.pack("<h", row_off))
+                else:
+                    var_out.append(row_off & 0xFF)
+
+            if desc0 & 0x10:
+                if desc0 & 0x20:
+                    var_out.extend(struct.pack("<H", top_u))
+                else:
+                    var_out.append(top_u)
+
+            if desc0 & 0x40:
+                if desc0 & 0x80:
+                    var_out.extend(struct.pack("<H", bottom_u))
+                else:
+                    var_out.append(bottom_u)
+
+            if desc1 & 0x01:
+                if desc1 & 0x02:
+                    var_out.extend(struct.pack("<H", mid_u))
+                else:
+                    var_out.append(mid_u)
+
+            if desc1 & 0x04:
+                var_out.extend(struct.pack("<H", sector_u))
+            else:
+                var_out.append(sector_u)
+
+        fixed_bytes = bytes(fixed_out)
+        var_bytes = bytes(var_out)
+
+        chosen = fixed_bytes
+        if self.estimate_lump_storage_size(var_bytes) < self.estimate_lump_storage_size(fixed_bytes):
+            chosen = var_bytes
+
+        return self.wad_file.replace_lump(sides_lump_num, Lump(sides.name, chosen))
+
+    def process_ssectors(self, lump_num):
+        ssectors_lump_num = lump_num + ML_SSECTORS
+        ssectors = self.wad_file.get_lump_by_num(ssectors_lump_num)
+        segs_lump_num = lump_num + ML_SEGS
+        segs = self.wad_file.get_lump_by_num(segs_lump_num)
+
+        if ssectors is None or ssectors.length == 0:
+            return False
+        if ssectors.data.startswith(SSECTOR_COMPACT_MAGIC):
+            return False
+        if (ssectors.length % 4) != 0:
+            return False
+        if segs is None or segs.length == 0 or (segs.length % 32) != 0:
+            return False
+
+        subsector_count = ssectors.length // 4
+        seg_count = segs.length // 32
+        if subsector_count <= 0 or seg_count <= 0:
+            return False
+
+        first_list = []
+        prev_end = None
+
+        for i in range(subsector_count):
+            numsegs, firstseg = struct.unpack_from("<HH", ssectors.data, i * 4)
+            cur_first = to_u16(firstseg)
+            cur_num = to_u16(numsegs)
+            cur_end = cur_first + cur_num
+
+            if cur_end > seg_count:
+                return False
+
+            if prev_end is not None and cur_first != prev_end:
+                return False
+
+            first_list.append(cur_first)
+            prev_end = cur_end
+
+        if prev_end != seg_count:
+            return False
+
+        out = bytearray(SSECTOR_COMPACT_HEADER_SIZE + ((subsector_count + 1) * 2))
+        struct.pack_into("<4sHH", out, 0, SSECTOR_COMPACT_MAGIC, to_u16(subsector_count), 0)
+
+        for i, firstseg in enumerate(first_list):
+            struct.pack_into("<H", out, SSECTOR_COMPACT_HEADER_SIZE + (i * 2), to_u16(firstseg))
+
+        struct.pack_into(
+            "<H",
+            out,
+            SSECTOR_COMPACT_HEADER_SIZE + (subsector_count * 2),
+            to_u16(seg_count),
+        )
+
+        compact_bytes = bytes(out)
+        if self.estimate_lump_storage_size(compact_bytes) >= self.estimate_lump_storage_size(ssectors.data):
+            return False
+
+        return self.wad_file.replace_lump(ssectors_lump_num, Lump(ssectors.name, compact_bytes))
 
     def process_sectors(self, lump_num):
         sectors_lump_num = lump_num + ML_SECTORS
@@ -1223,6 +1381,8 @@ class WadProcessor:
 
         if blockmap is None or blockmap.length < 8 or (blockmap.length % 2) != 0:
             return False
+        if blockmap.data.startswith(BLOCKMAP_COMPACT_MAGIC):
+            return False
 
         short_count = blockmap.length // 2
         shorts = list(struct.unpack_from("<" + ("h" * short_count), blockmap.data, 0))
@@ -1235,49 +1395,157 @@ class WadProcessor:
 
         offsets = [to_u16(shorts[4 + i]) for i in range(block_count)]
         decoded_lists = []
+        unique_valid_offsets = {offset for offset in offsets if offset < short_count}
+        source_has_leading_zero = (
+            len(unique_valid_offsets) > 0
+            and all(shorts[offset] == 0 for offset in unique_valid_offsets)
+        )
 
         for offset in offsets:
             if offset >= short_count:
-                decoded_lists.append((-1,))
+                decoded_lists.append(tuple())
                 continue
 
             idx = offset
-            if shorts[idx] == 0:
+            if source_has_leading_zero and shorts[idx] == 0:
                 idx += 1
 
             entries = []
+            terminated = False
             while idx < short_count:
                 value = to_s16(shorts[idx])
-                entries.append(value)
                 idx += 1
                 if value == -1:
+                    terminated = True
                     break
+                if value < 0:
+                    entries = []
+                    break
+                entries.append(to_u16(value))
                 if len(entries) > 8192:
                     break
 
-            if not entries or entries[-1] != -1:
-                entries = [-1]
+            if not terminated:
+                entries = []
 
             decoded_lists.append(tuple(entries))
 
-        out_shorts = [shorts[0], shorts[1], shorts[2], shorts[3]]
-        out_shorts.extend([0] * block_count)
-        list_offsets = {}
-        next_offset = 4 + block_count
+        def build_vanilla_dedup():
+            out_shorts = [shorts[0], shorts[1], shorts[2], shorts[3]]
+            out_shorts.extend([0] * block_count)
+            list_offsets = {}
+            next_offset = 4 + block_count
 
-        for i, entries in enumerate(decoded_lists):
-            offset = list_offsets.get(entries)
-            if offset is None:
-                if next_offset > 0x7FFF:
-                    return False
-                offset = next_offset
-                list_offsets[entries] = offset
-                out_shorts.extend(entries)
-                next_offset += len(entries)
+            for i, entries in enumerate(decoded_lists):
+                key = (0,) + entries + (-1,)
+                offset = list_offsets.get(key)
+                if offset is None:
+                    if next_offset > 0x7FFF:
+                        return None
+                    offset = next_offset
+                    list_offsets[key] = offset
+                    out_shorts.append(0)
+                    out_shorts.extend(list(entries))
+                    out_shorts.append(-1)
+                    next_offset += len(entries) + 2
 
-            out_shorts[4 + i] = to_s16(offset)
+                out_shorts[4 + i] = to_s16(offset)
 
-        rebuilt = struct.pack("<" + ("h" * len(out_shorts)), *out_shorts)
+            return struct.pack("<" + ("h" * len(out_shorts)), *out_shorts)
+
+        def build_compact_rows():
+            bitmap_bytes = (width + 7) // 8
+            row_table_size = height * 2
+            row_data = bytearray()
+            list_data = bytearray()
+            row_offsets = []
+            list_offsets = {}
+
+            row_data_base = BLOCKMAP_COMPACT_HEADER_SIZE + row_table_size
+
+            for y in range(height):
+                row_offsets.append(row_data_base + len(row_data))
+                bitmap = bytearray(bitmap_bytes)
+                descriptors = []
+
+                for x in range(width):
+                    entries = decoded_lists[y * width + x]
+                    if not entries:
+                        continue
+
+                    bitmap[x >> 3] |= 1 << (x & 7)
+
+                    if len(entries) == 1 and entries[0] <= 0x7FFF:
+                        descriptors.append(0x8000 | entries[0])
+                        continue
+
+                    offset_words = list_offsets.get(entries)
+                    if offset_words is None:
+                        offset_words = len(list_data) // 2
+                        if offset_words > 0x7FFF:
+                            return None
+                        list_offsets[entries] = offset_words
+
+                        if len(entries) > 0xFFFF:
+                            return None
+                        list_data.extend(struct.pack("<H", len(entries)))
+                        for line_no in entries:
+                            list_data.extend(struct.pack("<H", to_u16(line_no)))
+
+                    descriptors.append(offset_words)
+
+                if len(descriptors) > 0xFFFF:
+                    return None
+
+                row_data.extend(struct.pack("<H", len(descriptors)))
+                row_data.extend(bitmap)
+                for desc in descriptors:
+                    row_data.extend(struct.pack("<H", to_u16(desc)))
+
+            list_base = row_data_base + len(row_data)
+            if list_base > 0xFFFF:
+                return None
+
+            out = bytearray(BLOCKMAP_COMPACT_HEADER_SIZE + row_table_size)
+            struct.pack_into(
+                "<4shhHHHH",
+                out,
+                0,
+                BLOCKMAP_COMPACT_MAGIC,
+                to_s16(shorts[0]),
+                to_s16(shorts[1]),
+                to_u16(width),
+                to_u16(height),
+                to_u16(list_base),
+                0,
+            )
+
+            for i, row_offset in enumerate(row_offsets):
+                if row_offset > 0xFFFF:
+                    return None
+                struct.pack_into(
+                    "<H",
+                    out,
+                    BLOCKMAP_COMPACT_HEADER_SIZE + (i * 2),
+                    to_u16(row_offset),
+                )
+
+            out.extend(row_data)
+            out.extend(list_data)
+            return bytes(out)
+
+        candidates = []
+        vanilla = build_vanilla_dedup()
+        if vanilla is not None:
+            candidates.append(vanilla)
+        compact = build_compact_rows()
+        if compact is not None:
+            candidates.append(compact)
+
+        if not candidates:
+            return False
+
+        rebuilt = min(candidates, key=len)
         if len(rebuilt) >= blockmap.length:
             return False
 

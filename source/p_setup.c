@@ -62,6 +62,12 @@ int R_LoadTextureByName(const char* tex_name);
 #define GBADOOM_NODE_COMPACT_MAGIC 0x3043444Eu /* "NDC0" */
 #define GBADOOM_NODE_COMPACT_HEADER_SIZE 16u
 #define GBADOOM_NODE_COMPACT_ENTRY_SIZE 16u
+#define GBADOOM_SSECTOR_COMPACT_MAGIC 0x30435353u /* "SSC0" */
+#define GBADOOM_SSECTOR_COMPACT_HEADER_SIZE 8u
+#define GBADOOM_SIDEDEF_VAR_MAGIC 0x30564453u /* "SDV0" */
+#define GBADOOM_SIDEDEF_VAR_HEADER_SIZE 8u
+#define GBADOOM_BLOCKMAP_COMPACT_MAGIC 0x30434D42u /* "BMC0" */
+#define GBADOOM_BLOCKMAP_COMPACT_HEADER_SIZE 16u
 
 typedef struct
 {
@@ -102,6 +108,12 @@ static unsigned int P_ReadU32LE(const byte* p)
         | ((unsigned int)p[1] << 8)
         | ((unsigned int)p[2] << 16)
         | ((unsigned int)p[3] << 24);
+}
+
+static unsigned int P_ReadU16LE(const byte* p)
+{
+    return ((unsigned int)p[0])
+        | ((unsigned int)p[1] << 8);
 }
 
 static void P_HuffResetReader(huff_lump_reader_t* reader)
@@ -169,6 +181,57 @@ static void P_HuffFinishOrError(const huff_lump_reader_t* reader, const char* co
 {
     if (reader->raw_pos != reader->raw_size)
         I_Error("%s: incomplete Huffman decode for lump %d", context, lump);
+}
+
+static byte P_ReadPackedByteOrError(
+    boolean is_huffman,
+    huff_lump_reader_t* huff,
+    const byte** cursor,
+    const byte* end,
+    const char* context,
+    int lump)
+{
+    byte value;
+
+    if (is_huffman)
+    {
+        P_HuffReadBytesOrError(huff, &value, 1, context, lump);
+        return value;
+    }
+
+    if (cursor == NULL || *cursor == NULL || end == NULL || *cursor >= end)
+        I_Error("%s: truncated packed lump %d", context, lump);
+
+    value = **cursor;
+    (*cursor)++;
+    return value;
+}
+
+static unsigned int P_ReadPackedU16OrError(
+    boolean is_huffman,
+    huff_lump_reader_t* huff,
+    const byte** cursor,
+    const byte* end,
+    const char* context,
+    int lump)
+{
+    byte lo = P_ReadPackedByteOrError(is_huffman, huff, cursor, end, context, lump);
+    byte hi = P_ReadPackedByteOrError(is_huffman, huff, cursor, end, context, lump);
+    return ((unsigned int)lo) | ((unsigned int)hi << 8);
+}
+
+static int P_ReadPackedS16OrError(
+    boolean is_huffman,
+    huff_lump_reader_t* huff,
+    const byte** cursor,
+    const byte* end,
+    const char* context,
+    int lump)
+{
+    unsigned int value = P_ReadPackedU16OrError(is_huffman, huff, cursor, end, context, lump);
+    if (value & 0x8000u)
+        return (int)value - 0x10000;
+    return (int)value;
 }
 
 static void P_HuffInsertCanonicalCode(
@@ -370,10 +433,12 @@ static void P_LoadSegs (int lump)
 
 static void P_LoadSubsectors (int lump)
 {
-  /* cph 2006/07/29 - make data a const mapsubsector_t *, so the loop below is simpler & gives no constness warnings */
+  const byte *raw_data = NULL;
   const mapsubsector_t *data = NULL;
   int lump_size;
   boolean is_huffman = false;
+  boolean is_compact = false;
+  unsigned int compact_count = 0;
   huff_lump_reader_t huff;
   int  i;
 
@@ -385,8 +450,102 @@ static void P_LoadSubsectors (int lump)
   else
   {
     lump_size = W_LumpLength(lump);
-    data = (const mapsubsector_t *)W_CacheLumpNum(lump);
+    raw_data = W_CacheLumpNum(lump);
+    data = (const mapsubsector_t *)raw_data;
   }
+
+  if (lump_size >= (int)GBADOOM_SSECTOR_COMPACT_HEADER_SIZE)
+  {
+    byte header[GBADOOM_SSECTOR_COMPACT_HEADER_SIZE];
+    unsigned int expected_size;
+
+    if (is_huffman)
+    {
+      P_HuffResetReader(&huff);
+      P_HuffReadBytesOrError(&huff, header, sizeof(header), "P_LoadSubsectors", lump);
+    }
+    else
+    {
+      memcpy(header, raw_data, sizeof(header));
+    }
+
+    if (P_ReadU32LE(header) == GBADOOM_SSECTOR_COMPACT_MAGIC)
+    {
+      compact_count = P_ReadU16LE(header + 4);
+      expected_size = GBADOOM_SSECTOR_COMPACT_HEADER_SIZE + ((compact_count + 1u) * 2u);
+      if (compact_count > 0u && expected_size == (unsigned int)lump_size)
+      {
+        is_compact = true;
+      }
+    }
+  }
+
+  if (is_compact)
+  {
+    _g->numsubsectors = (int)compact_count;
+    _g->subsectors = Z_Calloc(_g->numsubsectors, sizeof(subsector_t), PU_LEVEL, 0);
+
+    if (!_g->numsubsectors || !_g->subsectors)
+      I_Error("P_LoadSubsectors: no subsectors in level");
+
+    if (is_huffman)
+    {
+      byte header[GBADOOM_SSECTOR_COMPACT_HEADER_SIZE];
+      unsigned int previous_firstseg;
+
+      P_HuffResetReader(&huff);
+      P_HuffReadBytesOrError(&huff, header, sizeof(header), "P_LoadSubsectors", lump);
+      if (P_ReadU32LE(header) != GBADOOM_SSECTOR_COMPACT_MAGIC
+          || P_ReadU16LE(header + 4) != compact_count)
+      {
+        I_Error("P_LoadSubsectors: invalid compact header in lump %d", lump);
+      }
+
+      previous_firstseg = P_ReadPackedU16OrError(true, &huff, NULL, NULL, "P_LoadSubsectors", lump);
+      for (i = 0; i < _g->numsubsectors; i++)
+      {
+        unsigned int next_firstseg =
+            P_ReadPackedU16OrError(true, &huff, NULL, NULL, "P_LoadSubsectors", lump);
+        unsigned int numsegs;
+
+        if (next_firstseg < previous_firstseg)
+          I_Error("P_LoadSubsectors: invalid compact subsector range in lump %d", lump);
+
+        numsegs = next_firstseg - previous_firstseg;
+        if (numsegs > 0xFFFFu)
+          I_Error("P_LoadSubsectors: compact subsector span overflow in lump %d", lump);
+
+        _g->subsectors[i].firstline = (unsigned short)previous_firstseg;
+        _g->subsectors[i].numlines = (unsigned short)numsegs;
+        previous_firstseg = next_firstseg;
+      }
+
+      P_HuffFinishOrError(&huff, "P_LoadSubsectors", lump);
+    }
+    else
+    {
+      const byte *first_data = raw_data + GBADOOM_SSECTOR_COMPACT_HEADER_SIZE;
+
+      for (i = 0; i < _g->numsubsectors; i++)
+      {
+        unsigned int firstseg = P_ReadU16LE(first_data + (i * 2));
+        unsigned int next_firstseg = P_ReadU16LE(first_data + ((i + 1) * 2));
+        unsigned int numsegs;
+
+        if (next_firstseg < firstseg)
+          I_Error("P_LoadSubsectors: invalid compact subsector range in lump %d", lump);
+
+        numsegs = next_firstseg - firstseg;
+        _g->subsectors[i].firstline = (unsigned short)firstseg;
+        _g->subsectors[i].numlines = (unsigned short)numsegs;
+      }
+    }
+
+    return;
+  }
+
+  if (is_huffman)
+    P_HuffResetReader(&huff);
 
   if (lump_size % (int)sizeof(mapsubsector_t) != 0)
     I_Error("P_LoadSubsectors: invalid lump size %d", lump_size);
@@ -819,6 +978,15 @@ static void P_LoadLineDefs2(int lump)
     */
 }
 
+typedef enum
+{
+    SIDEDEF_FORMAT_VANILLA = 0,
+    SIDEDEF_FORMAT_COMPACT,
+    SIDEDEF_FORMAT_VAR
+} sidedef_load_format_t;
+
+static sidedef_load_format_t g_sidedef_load_format = SIDEDEF_FORMAT_COMPACT;
+
 //
 // P_LoadSideDefs
 //
@@ -833,6 +1001,9 @@ static void P_LoadSideDefs (int lump)
   boolean can_be_vanilla;
   boolean can_be_compact;
   boolean is_vanilla = false;
+  const char *format_name = "COMPACT";
+
+  g_sidedef_load_format = SIDEDEF_FORMAT_COMPACT;
 
   if (P_HuffInitLumpReader(lump, &huff))
   {
@@ -843,6 +1014,35 @@ static void P_LoadSideDefs (int lump)
   {
     data = W_CacheLumpNum(lump);
     lump_size = W_LumpLength(lump);
+  }
+
+  if (lump_size >= (int)GBADOOM_SIDEDEF_VAR_HEADER_SIZE)
+  {
+    byte header[GBADOOM_SIDEDEF_VAR_HEADER_SIZE];
+    unsigned int var_count;
+
+    if (is_huffman)
+    {
+      P_HuffResetReader(&huff);
+      P_HuffReadBytesOrError(&huff, header, sizeof(header), "P_LoadSideDefs", lump);
+    }
+    else
+    {
+      memcpy(header, data, sizeof(header));
+    }
+
+    if (P_ReadU32LE(header) == GBADOOM_SIDEDEF_VAR_MAGIC)
+    {
+      var_count = P_ReadU16LE(header + 4);
+      if (var_count == 0)
+        I_Error("P_LoadSideDefs: no sidedefs in var lump");
+
+      _g->numsides = (int)var_count;
+      g_sidedef_load_format = SIDEDEF_FORMAT_VAR;
+      lprintf(LO_INFO, "P_LoadSideDefs: format=VAR numsides=%d\n", _g->numsides);
+      _g->sides = Z_Calloc(_g->numsides, sizeof(side_t), PU_LEVEL, 0);
+      return;
+    }
   }
 
   can_be_vanilla = (lump_size % sizeof(mapvanillasidedef_t) == 0);
@@ -933,12 +1133,20 @@ static void P_LoadSideDefs (int lump)
   }
 
   if (is_vanilla)
+  {
     _g->numsides = lump_size / sizeof(mapvanillasidedef_t);
+    g_sidedef_load_format = SIDEDEF_FORMAT_VANILLA;
+    format_name = "VANILLA";
+  }
   else
+  {
     _g->numsides = lump_size / sizeof(mapsidedef_t);
+    g_sidedef_load_format = SIDEDEF_FORMAT_COMPACT;
+    format_name = "COMPACT";
+  }
 
   lprintf(LO_INFO, "P_LoadSideDefs: format=%s numsides=%d\n",
-      is_vanilla ? "VANILLA" : "COMPACT", _g->numsides);
+      format_name, _g->numsides);
 
   _g->sides = Z_Calloc(_g->numsides,sizeof(side_t),PU_LEVEL,0);
 }
@@ -952,8 +1160,6 @@ static void P_LoadSideDefs2(int lump)
     const byte *data = NULL;
     int lump_size;
     int  i;
-    int vanilla_sides;
-    boolean is_vanilla = false;
     boolean is_huffman = false;
     huff_lump_reader_t huff;
 
@@ -968,10 +1174,133 @@ static void P_LoadSideDefs2(int lump)
         lump_size = W_LumpLength(lump);
     }
 
-    vanilla_sides = lump_size / sizeof(mapvanillasidedef_t);
-    is_vanilla = (_g->numsides == vanilla_sides);
+    if (g_sidedef_load_format == SIDEDEF_FORMAT_VAR)
+    {
+        const byte *cursor = NULL;
+        const byte *end = NULL;
 
-    if (is_vanilla)
+        if (is_huffman)
+        {
+            byte header[GBADOOM_SIDEDEF_VAR_HEADER_SIZE];
+            P_HuffReadBytesOrError(&huff, header, sizeof(header), "P_LoadSideDefs2", lump);
+            if (P_ReadU32LE(header) != GBADOOM_SIDEDEF_VAR_MAGIC
+                || P_ReadU16LE(header + 4) != (unsigned int)_g->numsides)
+            {
+                I_Error("P_LoadSideDefs2: invalid var sidedef header in lump %d", lump);
+            }
+        }
+        else
+        {
+            if (lump_size < (int)GBADOOM_SIDEDEF_VAR_HEADER_SIZE)
+                I_Error("P_LoadSideDefs2: truncated var sidedef lump %d", lump);
+
+            if (P_ReadU32LE(data) != GBADOOM_SIDEDEF_VAR_MAGIC
+                || P_ReadU16LE(data + 4) != (unsigned int)_g->numsides)
+            {
+                I_Error("P_LoadSideDefs2: invalid var sidedef header in lump %d", lump);
+            }
+
+            cursor = data + GBADOOM_SIDEDEF_VAR_HEADER_SIZE;
+            end = data + lump_size;
+        }
+
+        for (i=0; i<_g->numsides; i++)
+        {
+            byte desc0;
+            byte desc1;
+            int textureoffset = 0;
+            int rowoffset = 0;
+            unsigned int toptexture = 0;
+            unsigned int bottomtexture = 0;
+            unsigned int midtexture = 0;
+            unsigned int sector_num;
+            register side_t *sd = _g->sides + i;
+            register sector_t *sec = NULL;
+
+            desc0 = P_ReadPackedByteOrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+            desc1 = P_ReadPackedByteOrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+
+            if (desc0 & 0x01)
+            {
+                if (desc0 & 0x02)
+                    textureoffset =
+                        P_ReadPackedS16OrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+                else
+                    textureoffset =
+                        (int)(signed char)P_ReadPackedByteOrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+            }
+
+            if (desc0 & 0x04)
+            {
+                if (desc0 & 0x08)
+                    rowoffset =
+                        P_ReadPackedS16OrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+                else
+                    rowoffset =
+                        (int)(signed char)P_ReadPackedByteOrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+            }
+
+            if (desc0 & 0x10)
+            {
+                if (desc0 & 0x20)
+                    toptexture =
+                        P_ReadPackedU16OrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+                else
+                    toptexture =
+                        (unsigned int)P_ReadPackedByteOrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+            }
+
+            if (desc0 & 0x40)
+            {
+                if (desc0 & 0x80)
+                    bottomtexture =
+                        P_ReadPackedU16OrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+                else
+                    bottomtexture =
+                        (unsigned int)P_ReadPackedByteOrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+            }
+
+            if (desc1 & 0x01)
+            {
+                if (desc1 & 0x02)
+                    midtexture =
+                        P_ReadPackedU16OrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+                else
+                    midtexture =
+                        (unsigned int)P_ReadPackedByteOrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+            }
+
+            if (desc1 & 0x04)
+            {
+                sector_num =
+                    P_ReadPackedU16OrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+            }
+            else
+            {
+                sector_num =
+                    (unsigned int)P_ReadPackedByteOrError(is_huffman, &huff, &cursor, end, "P_LoadSideDefs2", lump);
+            }
+
+            { /* cph 2006/09/30 - catch out-of-range sector numbers; use sector 0 instead */
+                if (sector_num >= _g->numsectors)
+                {
+                    lprintf(LO_WARN,"P_LoadSideDefs2: sidedef %i has out-of-range sector num %u\n", i, sector_num);
+                    sector_num = 0;
+                }
+                sd->sector = sec = &_g->sectors[sector_num];
+            }
+
+            sd->textureoffset = (short)textureoffset;
+            sd->rowoffset = (short)rowoffset;
+            sd->midtexture = (unsigned short)midtexture;
+            sd->toptexture = (unsigned short)toptexture;
+            sd->bottomtexture = (unsigned short)bottomtexture;
+        }
+
+        if (!is_huffman && cursor != end)
+            I_Error("P_LoadSideDefs2: trailing data in var sidedef lump %d", lump);
+    }
+    else if (g_sidedef_load_format == SIDEDEF_FORMAT_VANILLA)
     {
         // VANILLA format: texture names as char[8], need to convert to indices
         for (i=0; i<_g->numsides; i++)
@@ -1087,15 +1416,97 @@ static void P_LoadBlockMap (int lump)
     int leading_zero_blocks = 0;
     int valid_blocks = 0;
     int blockmap_short_count;
+    int lump_size_bytes;
+    const byte *raw_blockmap;
 
-    _g->blockmaplump = W_CacheLumpNum(lump);
-    blockmap_short_count = W_LumpLength(lump) / (int)sizeof(short);
+    raw_blockmap = W_CacheLumpNum(lump);
+    lump_size_bytes = W_LumpLength(lump);
 
-    _g->bmaporgx = _g->blockmaplump[0]<<FRACBITS;
-    _g->bmaporgy = _g->blockmaplump[1]<<FRACBITS;
-    _g->bmapwidth = _g->blockmaplump[2];
-    _g->bmapheight = _g->blockmaplump[3];
+    _g->blockmaplump = (const short *)raw_blockmap;
+    blockmap_short_count = lump_size_bytes / (int)sizeof(short);
 
+    _g->blockmap_is_compact = false;
+    _g->blockmap_compact_data = NULL;
+    _g->blockmap_compact_rowofs = NULL;
+    _g->blockmap_compact_lists = NULL;
+    _g->blockmap_compact_end = NULL;
+    _g->blockmap_compact_bitmap_bytes = 0;
+
+    if (lump_size_bytes >= (int)GBADOOM_BLOCKMAP_COMPACT_HEADER_SIZE
+        && P_ReadU32LE(raw_blockmap) == GBADOOM_BLOCKMAP_COMPACT_MAGIC)
+    {
+        int orgx = (short)P_ReadU16LE(raw_blockmap + 4);
+        int orgy = (short)P_ReadU16LE(raw_blockmap + 6);
+        unsigned int width = P_ReadU16LE(raw_blockmap + 8);
+        unsigned int height = P_ReadU16LE(raw_blockmap + 10);
+        unsigned int list_base = P_ReadU16LE(raw_blockmap + 12);
+        unsigned int bitmap_bytes;
+        unsigned int row_table_bytes;
+        const byte *rowofs;
+        const byte *lump_end = raw_blockmap + lump_size_bytes;
+
+        if (width == 0 || height == 0)
+            I_Error("P_LoadBlockMap: invalid compact dimensions %ux%u", width, height);
+
+        bitmap_bytes = (width + 7u) >> 3;
+        row_table_bytes = height * 2u;
+        if (GBADOOM_BLOCKMAP_COMPACT_HEADER_SIZE + row_table_bytes > (unsigned int)lump_size_bytes)
+            I_Error("P_LoadBlockMap: compact row table overrun");
+        if (list_base < GBADOOM_BLOCKMAP_COMPACT_HEADER_SIZE + row_table_bytes
+            || list_base > (unsigned int)lump_size_bytes)
+            I_Error("P_LoadBlockMap: invalid compact list base (%u/%d)", list_base, lump_size_bytes);
+
+        rowofs = raw_blockmap + GBADOOM_BLOCKMAP_COMPACT_HEADER_SIZE;
+        for (i = 0; i < (int)height; i++)
+        {
+            unsigned int row_offset = P_ReadU16LE(rowofs + (i * 2));
+            const byte *row;
+            unsigned int desc_count;
+            const byte *row_end;
+
+            if (row_offset < GBADOOM_BLOCKMAP_COMPACT_HEADER_SIZE + row_table_bytes
+                || row_offset >= list_base)
+            {
+                I_Error("P_LoadBlockMap: invalid compact row offset %u", row_offset);
+            }
+
+            row = raw_blockmap + row_offset;
+            if (row + 2 > raw_blockmap + list_base)
+                I_Error("P_LoadBlockMap: truncated compact row header");
+
+            desc_count = P_ReadU16LE(row);
+            row_end = row + 2 + bitmap_bytes + (desc_count * 2u);
+            if (row_end > raw_blockmap + list_base)
+                I_Error("P_LoadBlockMap: compact row data overflow");
+        }
+
+        _g->bmaporgx = orgx << FRACBITS;
+        _g->bmaporgy = orgy << FRACBITS;
+        _g->bmapwidth = (int)width;
+        _g->bmapheight = (int)height;
+        _g->blockmap = NULL;
+        _g->blockmap_has_leading_zero = false;
+        _g->blockmap_is_compact = true;
+        _g->blockmap_compact_data = raw_blockmap;
+        _g->blockmap_compact_rowofs = rowofs;
+        _g->blockmap_compact_lists = raw_blockmap + list_base;
+        _g->blockmap_compact_end = lump_end;
+        _g->blockmap_compact_bitmap_bytes = (unsigned short)bitmap_bytes;
+
+        lprintf(LO_INFO,
+            "P_LoadBlockMap: compact rows enabled (%dx%d, bitmap=%u bytes)\n",
+            _g->bmapwidth,
+            _g->bmapheight,
+            (unsigned int)_g->blockmap_compact_bitmap_bytes);
+    }
+    else
+    {
+        _g->bmaporgx = _g->blockmaplump[0]<<FRACBITS;
+        _g->bmaporgy = _g->blockmaplump[1]<<FRACBITS;
+        _g->bmapwidth = _g->blockmaplump[2];
+        _g->bmapheight = _g->blockmaplump[3];
+        _g->blockmap = _g->blockmaplump+4;
+    }
 
 #if defined(NUMWORKS) && PLATFORM_DEVICE
     // Compact mode: keep one global block chain head and filter by block on iteration.
@@ -1107,7 +1518,8 @@ static void P_LoadBlockMap (int lump)
     _g->blocklinks = Z_Calloc (_g->bmapwidth*_g->bmapheight,sizeof(*_g->blocklinks),PU_LEVEL,0);
 #endif
 
-    _g->blockmap = _g->blockmaplump+4;
+    if (_g->blockmap_is_compact)
+        return;
 
     // Some generated WADs omit the legacy leading 0 delimiter in each block list.
     // Detect which representation this lump uses so iterators can parse lists correctly.
@@ -1124,7 +1536,7 @@ static void P_LoadBlockMap (int lump)
     }
 
     _g->blockmap_has_leading_zero =
-        (valid_blocks > 0) && (leading_zero_blocks * 10 >= valid_blocks * 9);
+        (valid_blocks > 0) && (leading_zero_blocks == valid_blocks);
 
     lprintf(LO_INFO,
         "P_LoadBlockMap: leading_zero=%s (%d/%d blocks)\n",
