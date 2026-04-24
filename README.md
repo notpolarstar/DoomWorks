@@ -89,7 +89,7 @@ This repository uses the top-level `Makefile` to build and run the NumWorks app.
 Embed the WAD in the app :
 
 ```bash
-make PLATFORM=device run WAD=doom1.wad GBADOOM_ENABLE_STACK_REUSE=1 USE_UNSTABLE_ZONE_HEAP_SIZE=1 USE_EXTERNAL_IWAD=0 -j4
+make PLATFORM=device run WAD=doom1.wad GBADOOM_ENABLE_STACK_REUSE=1 USE_UNSTABLE_ZONE_HEAP_SIZE=1 USE_EXTERNAL_IWAD=0 COMPRESS_TEXTURES=1 -j4
 ```
 
 Notes:
