@@ -2,6 +2,7 @@ PLATFORM ?= simulator
 WAD ?= doom1.wad
 USE_EXTERNAL_IWAD ?= 0
 USE_UNSTABLE_ZONE_HEAP_SIZE ?= 0
+COMPRESS_TEXTURES ?= 0
 
 NUMWORKS_APP_DIR ?= $(CURDIR)/numworks_app
 
@@ -61,7 +62,7 @@ endif
 $(IWAD_C_FILE): $(WAD_ABS) $(CURDIR)/GbaWadUtil/gbawadutil.py
 	@mkdir -p $(dir $@)
 	@echo "[GBADOOM] Embedding $(WAD_BASENAME) into $(notdir $@)"
-	@$(CURDIR)/GbaWadUtil/gbawadutil.py -in "$(WAD_ABS)" -cfile "$@"
+	@$(CURDIR)/GbaWadUtil/gbawadutil.py -in "$(WAD_ABS)" -cfile "$@" $(if $(filter 1,$(COMPRESS_TEXTURES)),--compress-textures)
 
 ifeq ($(PLATFORM),device)
 ifeq ($(USE_EXTERNAL_IWAD),1)

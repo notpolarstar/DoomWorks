@@ -523,15 +523,16 @@ class WadProcessor:
         "P2_END",
     )
 
-    def __init__(self, wad_file):
+    def __init__(self, wad_file, compress_textures=False):
         self.wad_file = wad_file
         self.texture_map = None
         self.flat_map = None
+        self.compress_textures = compress_textures
 
     def process_wad(self):
         self.remove_unused_lumps()
         self.optimize_graphics_lumps()
-        if COMPRESS_FLATS:
+        if self.compress_textures:
             self.compress_flat_lumps()
 
         map_lump_num, _ = self.wad_file.get_lump_by_name("MAP01")
@@ -705,7 +706,7 @@ class WadProcessor:
             if is_ui_font:
                 continue
 
-            if width > 1:
+            if self.compress_textures and width > 1:
                 for col_idx in range(1, width):
                     src_col = (col_idx // LOSSY_PATCH_COLUMN_GROUP) * LOSSY_PATCH_COLUMN_GROUP
                     if src_col >= width:
@@ -1695,6 +1696,7 @@ def main():
     parser.add_argument("-out", dest="out_file", help="Optional output WAD path.")
     parser.add_argument("-cfile", dest="c_file", help="Optional output C source path.")
     parser.add_argument("-pwad", dest="pwads", nargs="*", default=[], help="Optional PWAD files to merge before processing.")
+    parser.add_argument("--compress-textures", action="store_true", help="Enable lossy compression for textures (patches and flats).")
 
     args = parser.parse_args()
 
@@ -1715,7 +1717,7 @@ def main():
             continue
         wf.merge_wad_file(pf)
 
-    processor = WadProcessor(wf)
+    processor = WadProcessor(wf, args.compress_textures)
     if not processor.process_wad():
         print("error: could not find Doom map lumps (MAP01 or E1M1)", file=sys.stderr)
         return 1
