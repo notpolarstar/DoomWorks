@@ -2,29 +2,27 @@
 
 Originally a port of prBoom to the GBA, then ported to the Numworks calculator.
 
-Works on both simulator **AND REAL DEVICE** (only tested on N0110) !
+Works on both simulator **AND REAL DEVICE** !
 
 https://github.com/user-attachments/assets/15cdd241-f8f5-4c12-888f-607869b79a1a
 
-This project uses [GbaWadUtil](https://github.com/doomhack/GbaWadUtil) (by doomhack) from the original GBADoom repo to embed the chosen WAD into the app.
+This project uses a python rewrite of [GbaWadUtil](https://github.com/doomhack/GbaWadUtil) (by doomhack) from the original GBADoom repo to embed the chosen WAD into the app.
 
 ## IMPORTANT:
 
 **This port is still very much a work in progress / proof of concept !!!**
 
-The biggest challenge when porting this was RAM usage, as a Numworks app only has about **~100KB** of heap available, which is almost nothing when compared to the original PC recommandations (~4MB) and still less than half of the GBA's specs (~256KB).
+The biggest challenge when porting this was RAM usage, as a Numworks app only has about **128KB** of RAM available, which is almost nothing when compared to the original PC recommandations (~4MB) and half of the GBA's specs (~256KB).
 
-The available storage space for a Numworks app was also a major constaint, as on my 25.2.0 Epsilon N0110 device, I could only install an app of about 2.4MB total.
+The available storage space for a Numworks app was also a major constaint, as on my 25.2.0 Epsilon N0110 device, I could only install an app of about 2.6MB total.
 
-As a result, most WADs (including the basic shareware WAD) either won't fit when installing the app on a regular stock Numworks device, or will take too much memory from the Zone allocator and quit.
+As a result, many WADs either won't fit when installing the app on a regular stock Numworks device, or will take too much memory from the Zone allocator and quit.
 
 ### RAM / Allocation issues:
 
 Instead of using DOOM's builtin Zone allocator, this project uses the system allocator (malloc / free). The performance cost is negligible.
 
-However, the calculator only give around 100KB of memory for the entire app. This means that most maps will not load. I am still working on optimizing ram usage for the future.
-
-From what I have heard, N0120 calculator have double the ram compared to all other models. I don't know if that extra ram is available for apps as I don't have this model, but if it is, most maps of WADs using the "compact" format should work without issue.
+However, the OS only gives 128KB of memory for the entire app. This means that a lot of maps will not load. I am still working on optimizing ram usage for the future.
 
 ### WAD size issues:
 
@@ -37,13 +35,13 @@ If your WAD is too big to fit on your device, here are some projects that can he
 
 In case you need even more space, you can use [Nwagra](https://yaya-cout.github.io/Nwagyu/guide/help/enlarge-your-memory.html) (by yaya-cout), a tool letting you use up to 6MB to install apps (for N0110, N0115 and N0120) !
 
-If you just want a small WAD to test out the engine, I recommand [Squashware Doom](https://github.com/fragglet/squashware) (by fragglet). The silent 1-level version of this fits perfectly and runs at full-speed.
+If you just want a small WAD to test out the engine, I recommand [Squashware Doom](https://github.com/fragglet/squashware) (by fragglet). The full, silent version of this fits perfectly and runs at full-speed.
 
 ## To do:
 
-- Make a better zone allocation system (utilize the extra RAM of the N0120, use dynamic allocations)
-- Fork [GbaWadUtil](https://github.com/doomhack/GbaWadUtil) to make an easier to use version that strips the music + SFX from the WADs (for now, Numworks calculators don't have speakers, but maybe in the future !)
-- Optimize as much as possible !
+- Make a better allocation system (minimize fragmentation)
+- Improve the compression of many lumps in WADs so that bigger WADs can fit without lossy texture compression
+- Save as much memory as possible
 
 ## Controls:
 
