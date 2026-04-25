@@ -930,12 +930,12 @@ static void D_DoomMainSetup(void)
         }
 #endif
 
-        if (timedemo == NULL && (title_lump == -1 || !demo1_ok))
+        if (timedemo == NULL && title_lump == -1)
         {
             int first_ep = 0;
             int first_map = 0;
 
-            lprintf(LO_WARN, "D_DoomMainSetup: invalid title/demo resources, choosing direct level start.");
+            lprintf(LO_WARN, "D_DoomMainSetup: invalid title resources, choosing direct level start.");
 #ifdef NUMWORKS
             // NUMWORKS_CHECKPOINT("Boot fallback: direct level start");
 #endif
@@ -1046,12 +1046,24 @@ static void D_DoomMainSetup(void)
     }
     else
     {
-        if (W_CheckNumForName("DEMO1") == -1 || W_CheckNumForName("TITLEPIC") == -1)
+        boolean missing_intro_assets;
+#ifdef NUMWORKS
+        /* NumWorks skips demo playback in the title loop, so DEMO lumps are optional. */
+        missing_intro_assets = (W_CheckNumForName("TITLEPIC") == -1);
+#else
+        missing_intro_assets = (W_CheckNumForName("DEMO1") == -1 || W_CheckNumForName("TITLEPIC") == -1);
+#endif
+
+        if (missing_intro_assets)
         {
             int first_ep = 0;
             int first_map = 0;
 
+#ifdef NUMWORKS
+            lprintf(LO_WARN, "D_DoomMainSetup: TITLEPIC missing, choosing direct level start.");
+#else
             lprintf(LO_WARN, "D_DoomMainSetup: DEMO/TITLE lumps missing, choosing direct level start.");
+#endif
 
             if (W_CheckNumForName("E1M1") != -1)
             {
