@@ -46,7 +46,10 @@
 
 #define PU_PURGELEVEL PU_CACHE
 
-
+#if defined(NUMWORKS) && PLATFORM_DEVICE
+#define FSALLOC_MAX_BLOCKS 96
+#define FSALLOC_POOL_FILE "doom_mem_pool.bin"
+#endif
 
 void	Z_Init (void);
 unsigned int Z_GetHeapSize(void);

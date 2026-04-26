@@ -12,6 +12,8 @@ extern "C" {
 #endif
 
 
+#include "doomtype.h"
+
 void I_InitScreen_e32();
 
 void I_CreateBackBuffer_e32();
@@ -31,6 +33,8 @@ void I_DebugLog_e32(const char* message);
 void I_DebugPause_e32(const char* reason);
 int I_IsTexturedPlanesEnabled_e32(void);
 int I_IsVisualExtrasEnabled_e32(void);
+int I_IsFilesystemEnabled_e32(void);
+int I_IsShutdownRequested_e32(void);
 
 int I_GetTime_e32(void);
 

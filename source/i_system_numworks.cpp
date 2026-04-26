@@ -44,6 +44,8 @@ static bool s_debug_choice_done = false;
 static bool s_startup_options_done = false;
 static bool s_textured_planes_enabled = true;
 static bool s_visual_extras_enabled = true;
+static bool s_filesystem_enabled = true;
+static bool s_shutdown_requested = false;
 
 static const int kFontWidth = 7;
 static const int kLineHeight = 18;
@@ -283,6 +285,7 @@ static void DrawStartupOptionsScreen(int selected_item)
 {
     char line_textured[64];
     char line_extras[64];
+    char line_filesystem[64];
 
     snprintf(line_textured, sizeof(line_textured), "%c Textured floors/ceilings: %s",
              selected_item == 0 ? '>' : ' ',
@@ -290,6 +293,9 @@ static void DrawStartupOptionsScreen(int selected_item)
     snprintf(line_extras, sizeof(line_extras), "%c Lights & decorative objects: %s",
              selected_item == 1 ? '>' : ' ',
              s_visual_extras_enabled ? "ON" : "OFF");
+    snprintf(line_filesystem, sizeof(line_filesystem), "%c Use Filesystem as memory: %s",
+             selected_item == 2 ? '>' : ' ',
+             s_filesystem_enabled ? "ON" : "OFF");
 
     eadk_display_wait_for_vblank();
 
@@ -307,6 +313,7 @@ static void DrawStartupOptionsScreen(int selected_item)
         eadk_color_black);
     eadk_display_draw_string(line_textured, (eadk_point_t){6, 110}, false, eadk_color_white, eadk_color_black);
     eadk_display_draw_string(line_extras, (eadk_point_t){6, 128}, false, eadk_color_white, eadk_color_black);
+    eadk_display_draw_string(line_filesystem, (eadk_point_t){6, 146}, false, eadk_color_white, eadk_color_black);
 }
 
 static void ShowStartupOptionsPrompt(void)
@@ -346,15 +353,20 @@ static void ShowStartupOptionsPrompt(void)
 
         if ((up_now && !up_prev) || (down_now && !down_prev))
         {
-            selected_item ^= 1;
+            if (up_now && !up_prev)
+                selected_item = (selected_item + 2) % 3;
+            else
+                selected_item = (selected_item + 1) % 3;
         }
 
         if ((ok_now && !ok_prev) || (back_now && !back_prev))
         {
             if (selected_item == 0)
                 s_textured_planes_enabled = !s_textured_planes_enabled;
-            else
+            else if (selected_item == 1)
                 s_visual_extras_enabled = !s_visual_extras_enabled;
+            else
+                s_filesystem_enabled = !s_filesystem_enabled;
         }
 
         if (exe_now && !exe_prev)
@@ -368,9 +380,10 @@ static void ShowStartupOptionsPrompt(void)
 
     WaitForNoKeys();
 
-    lprintf(LO_ALWAYS, "[NUMWORKS] Startup options: textured=%s extras=%s",
+        lprintf(LO_ALWAYS, "[NUMWORKS] Startup options: textured=%s extras=%s filesystem=%s",
             s_textured_planes_enabled ? "ON" : "OFF",
-            s_visual_extras_enabled ? "ON" : "OFF");
+            s_visual_extras_enabled ? "ON" : "OFF",
+            s_filesystem_enabled ? "ON" : "OFF");
 }
 
 static void ShowDebugChoicePrompt(void)
@@ -440,6 +453,7 @@ void I_InitScreen_e32()
     s_startup_options_done = false;
     s_textured_planes_enabled = true;
     s_visual_extras_enabled = true;
+    s_filesystem_enabled = true;
 
     eadk_display_push_rect_uniform(eadk_screen_rect, eadk_color_black);
     lprintf(LO_ALWAYS, "[NUMWORKS] Screen initialized");
@@ -524,6 +538,12 @@ void I_ProcessKeyEvents()
 {
     eadk_keyboard_state_t current = eadk_keyboard_scan();
 
+    if (eadk_keyboard_key_down(current, eadk_key_home) || eadk_keyboard_key_down(current, eadk_key_on_off))
+    {
+        I_Quit_e32();
+        return;
+    }
+
     bool combo_now = eadk_keyboard_key_down(current, eadk_key_shift)
         && eadk_keyboard_key_down(current, eadk_key_alpha);
     bool combo_prev = eadk_keyboard_key_down(s_prev_keyboard_state, eadk_key_shift)
@@ -579,6 +599,11 @@ int I_IsTexturedPlanesEnabled_e32(void)
 int I_IsVisualExtrasEnabled_e32(void)
 {
     return s_visual_extras_enabled ? 1 : 0;
+}
+
+int I_IsFilesystemEnabled_e32(void)
+{
+    return s_filesystem_enabled ? 1 : 0;
 }
 
 void I_DebugCheckpoint_e32(const char* checkpoint)
@@ -662,12 +687,30 @@ void I_Error(const char* error, ...)
 
     while (true)
     {
+        eadk_keyboard_state_t keys = eadk_keyboard_scan();
+        if (eadk_keyboard_key_down(keys, eadk_key_home) || eadk_keyboard_key_down(keys, eadk_key_on_off))
+        {
+            I_Quit_e32();
+            break;
+        }
+
         eadk_timing_msleep(50);
     }
 }
 
 void I_Quit_e32()
 {
+    s_shutdown_requested = true;
+
+    while (true)
+    {
+        eadk_timing_msleep(50);
+    }
+}
+
+int I_IsShutdownRequested_e32(void)
+{
+    return s_shutdown_requested ? 1 : 0;
 }
 
 #endif
