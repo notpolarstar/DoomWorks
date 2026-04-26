@@ -23,6 +23,7 @@ IWAD_EMBED_NAME := $(subst -,_,$(basename $(WAD_BASENAME)))
 IWAD_C_FILE := $(CURDIR)/source/iwad/$(IWAD_EMBED_NAME).c
 IWAD_INCLUDE_DEFINE := -DEMBEDDED_IWAD_INCLUDE=\"iwad/$(IWAD_EMBED_NAME).c\"
 BUILD_CFG_FILE := $(NUMWORKS_APP_DIR)/output/.gbadoom_build_cfg_$(PLATFORM)
+BUNDLED_PWAD := $(CURDIR)/GbaWadUtil/gbadoom.wad
 
 # Disable reciprocal table on device by default: saves ~200 KB of FLASH rodata.
 ifeq ($(PLATFORM),device)
@@ -59,7 +60,7 @@ endif
 
 .PHONY: build run clean
 
-$(IWAD_C_FILE): $(WAD_ABS) $(CURDIR)/GbaWadUtil/gbawadutil.py
+$(IWAD_C_FILE): $(WAD_ABS) $(CURDIR)/GbaWadUtil/gbawadutil.py $(wildcard $(BUNDLED_PWAD))
 	@mkdir -p $(dir $@)
 	@echo "[GBADOOM] Embedding $(WAD_BASENAME) into $(notdir $@)"
 	@$(CURDIR)/GbaWadUtil/gbawadutil.py -in "$(WAD_ABS)" -cfile "$@" $(if $(filter 1,$(COMPRESS_TEXTURES)),--compress-textures)
