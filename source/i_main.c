@@ -149,6 +149,11 @@ int main(int argc, const char * const * argv)
 
 #ifdef NUMWORKS
     I_DebugCheckpoint_e32("After InitGlobals");
+    if (I_IsDemoEnabled_e32())
+    {
+        D_SetDemoMode("demo1");
+        I_DebugLog_e32("Demo mode enabled");
+    }
     I_DebugCheckpoint_e32("Before D_DoomMain");
 #endif
 

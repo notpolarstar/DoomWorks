@@ -38,6 +38,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -78,6 +79,7 @@
 
 #ifdef NUMWORKS
 #include "i_system_e32.h"
+#include <eadk.h>
 // #define NUMWORKS_CHECKPOINT(msg) I_DebugCheckpoint_e32(msg)
 #else
 // #define NUMWORKS_CHECKPOINT(msg) do { } while (0)
@@ -1173,6 +1175,34 @@ void G_DeferedPlayDemo (const char* name)
 
 static int demolumpnum = -1;
 
+#ifdef NUMWORKS
+static int NumWorksExternalDemoAvailable(void)
+{
+    unsigned char demover;
+
+    if (eadk_external_data_size <= 0)
+    {
+        return 0;
+    }
+
+    /* Treat IWAD/PWAD payloads as map data, not demo data. */
+    if (eadk_external_data_size >= 4 &&
+        ((eadk_external_data[0] == 'I' && eadk_external_data[1] == 'W' && eadk_external_data[2] == 'A' && eadk_external_data[3] == 'D') ||
+         (eadk_external_data[0] == 'P' && eadk_external_data[1] == 'W' && eadk_external_data[2] == 'A' && eadk_external_data[3] == 'D')))
+    {
+        return 0;
+    }
+
+    demover = eadk_external_data[0];
+    if (!((demover <= 4) || (demover >= 104 && demover <= 111) || (demover >= 200 && demover <= 214)))
+    {
+        return 0;
+    }
+
+    return 1;
+}
+#endif
+
 //e6y: Check for overrun
 static boolean CheckForOverrun(const byte *start_p, const byte *current_p, size_t maxsize, size_t size, boolean failonerror)
 {
@@ -1342,14 +1372,33 @@ static const byte* G_ReadDemoHeader(const byte *demo_p, size_t size, boolean fai
 void G_DoPlayDemo(void)
 {
     char basename[9];
+#ifdef NUMWORKS
+    int loaded_from_external = 0;
+#else
+    const int loaded_from_external = 0;
+#endif
 
     ExtractFileBase(defdemoname,basename);           // killough
     basename[8] = 0;
 
-    /* cph - store lump number for unlocking later */
-    demolumpnum = W_GetNumForName(basename);
-    _g->demobuffer = W_CacheLumpNum(demolumpnum);
-    _g->demolength = W_LumpLength(demolumpnum);
+#ifdef NUMWORKS
+    if (strcmp(basename, "DEMO1") == 0 && NumWorksExternalDemoAvailable())
+    {
+        _g->demobuffer = (byte*)eadk_external_data;
+        _g->demolength = (size_t)eadk_external_data_size;
+        demolumpnum = -1;
+        loaded_from_external = 1;
+        lprintf(LO_ALWAYS, "[NUMWORKS] Using external demo data (size=%u)", (unsigned int)_g->demolength);
+    }
+#endif
+
+    if (!loaded_from_external)
+    {
+        /* cph - store lump number for unlocking later */
+        demolumpnum = W_GetNumForName(basename);
+        _g->demobuffer = W_CacheLumpNum(demolumpnum);
+        _g->demolength = W_LumpLength(demolumpnum);
+    }
 
     _g->demo_p = G_ReadDemoHeader(_g->demobuffer, _g->demolength, true);
 

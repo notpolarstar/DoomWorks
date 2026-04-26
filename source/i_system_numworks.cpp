@@ -42,9 +42,11 @@ static int s_debug_line_count = 0;
 static bool s_debug_overlay_visible = false;
 static bool s_debug_choice_done = false;
 static bool s_startup_options_done = false;
+static bool s_startup_options_active = false;
 static bool s_textured_planes_enabled = true;
 static bool s_visual_extras_enabled = true;
 static bool s_filesystem_enabled = true;
+static bool s_demo_enabled = false;
 static bool s_shutdown_requested = false;
 
 static const int kFontWidth = 7;
@@ -286,6 +288,7 @@ static void DrawStartupOptionsScreen(int selected_item)
     char line_textured[64];
     char line_extras[64];
     char line_filesystem[64];
+    char line_demo[64];
 
     snprintf(line_textured, sizeof(line_textured), "%c Textured floors/ceilings: %s",
              selected_item == 0 ? '>' : ' ',
@@ -296,6 +299,9 @@ static void DrawStartupOptionsScreen(int selected_item)
     snprintf(line_filesystem, sizeof(line_filesystem), "%c Use Filesystem as memory: %s",
              selected_item == 2 ? '>' : ' ',
              s_filesystem_enabled ? "ON" : "OFF");
+    snprintf(line_demo, sizeof(line_demo), "%c Demo playback mode: %s",
+             selected_item == 3 ? '>' : ' ',
+             s_demo_enabled ? "ON" : "OFF");
 
     eadk_display_wait_for_vblank();
 
@@ -314,6 +320,7 @@ static void DrawStartupOptionsScreen(int selected_item)
     eadk_display_draw_string(line_textured, (eadk_point_t){6, 110}, false, eadk_color_white, eadk_color_black);
     eadk_display_draw_string(line_extras, (eadk_point_t){6, 128}, false, eadk_color_white, eadk_color_black);
     eadk_display_draw_string(line_filesystem, (eadk_point_t){6, 146}, false, eadk_color_white, eadk_color_black);
+    eadk_display_draw_string(line_demo, (eadk_point_t){6, 164}, false, eadk_color_white, eadk_color_black);
 }
 
 static void ShowStartupOptionsPrompt(void)
@@ -324,6 +331,7 @@ static void ShowStartupOptionsPrompt(void)
     }
 
     s_startup_options_done = true;
+    s_startup_options_active = true;
 
     int selected_item = 0;
     eadk_keyboard_state_t prev_keys = 0;
@@ -354,9 +362,9 @@ static void ShowStartupOptionsPrompt(void)
         if ((up_now && !up_prev) || (down_now && !down_prev))
         {
             if (up_now && !up_prev)
-                selected_item = (selected_item + 2) % 3;
+                selected_item = (selected_item + 3) % 4;
             else
-                selected_item = (selected_item + 1) % 3;
+                selected_item = (selected_item + 1) % 4;
         }
 
         if ((ok_now && !ok_prev) || (back_now && !back_prev))
@@ -365,8 +373,10 @@ static void ShowStartupOptionsPrompt(void)
                 s_textured_planes_enabled = !s_textured_planes_enabled;
             else if (selected_item == 1)
                 s_visual_extras_enabled = !s_visual_extras_enabled;
-            else
+            else if (selected_item == 2)
                 s_filesystem_enabled = !s_filesystem_enabled;
+            else if (selected_item == 3)
+                s_demo_enabled = !s_demo_enabled;
         }
 
         if (exe_now && !exe_prev)
@@ -378,12 +388,15 @@ static void ShowStartupOptionsPrompt(void)
         eadk_timing_msleep(10);
     }
 
+    s_startup_options_active = false;
+
     WaitForNoKeys();
 
-        lprintf(LO_ALWAYS, "[NUMWORKS] Startup options: textured=%s extras=%s filesystem=%s",
-            s_textured_planes_enabled ? "ON" : "OFF",
-            s_visual_extras_enabled ? "ON" : "OFF",
-            s_filesystem_enabled ? "ON" : "OFF");
+    lprintf(LO_ALWAYS, "[NUMWORKS] Startup options: textured=%s extras=%s filesystem=%s demo=%s",
+        s_textured_planes_enabled ? "ON" : "OFF",
+        s_visual_extras_enabled ? "ON" : "OFF",
+        s_filesystem_enabled ? "ON" : "OFF",
+        s_demo_enabled ? "ON" : "OFF");
 }
 
 static void ShowDebugChoicePrompt(void)
@@ -451,9 +464,11 @@ void I_InitScreen_e32()
     s_debug_overlay_visible = false;
     s_debug_choice_done = false;
     s_startup_options_done = false;
+    s_startup_options_active = false;
     s_textured_planes_enabled = true;
     s_visual_extras_enabled = true;
     s_filesystem_enabled = true;
+    s_demo_enabled = false;
 
     eadk_display_push_rect_uniform(eadk_screen_rect, eadk_color_black);
     lprintf(LO_ALWAYS, "[NUMWORKS] Screen initialized");
@@ -498,6 +513,12 @@ void I_FinishUpdate_e32(const byte* srcBuffer, const byte* pallete, const unsign
 {
     (void)width;
     (void)height;
+
+    // Skip display updates while startup options menu is active to prevent rendering artifacts
+    if (s_startup_options_active)
+    {
+        return;
+    }
 
     if (pallete != NULL && pallete != s_palette_source)
     {
@@ -711,6 +732,16 @@ void I_Quit_e32()
 int I_IsShutdownRequested_e32(void)
 {
     return s_shutdown_requested ? 1 : 0;
+}
+
+int I_IsDemoEnabled_e32(void)
+{
+    return s_demo_enabled ? 1 : 0;
+}
+
+int I_IsStartupOptionsActive_e32(void)
+{
+    return s_startup_options_active ? 1 : 0;
 }
 
 #endif

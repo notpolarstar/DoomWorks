@@ -113,7 +113,12 @@ const int startmap = 1;
 
 const boolean nodrawers = false;
 
-static const char* timedemo = NULL;//"demo1";
+static char* timedemo = NULL;
+
+void D_SetDemoMode(const char* demo_name)
+{
+    timedemo = (char*)demo_name;
+}
 
 /*
  * D_PostEvent - Event handling
