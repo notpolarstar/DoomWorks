@@ -24,6 +24,18 @@ IWAD_C_FILE := $(CURDIR)/source/iwad/$(IWAD_EMBED_NAME).c
 IWAD_INCLUDE_DEFINE := -DEMBEDDED_IWAD_INCLUDE=\"iwad/$(IWAD_EMBED_NAME).c\"
 BUILD_CFG_FILE := $(NUMWORKS_APP_DIR)/output/.gbadoom_build_cfg_$(PLATFORM)
 BUNDLED_PWAD := $(CURDIR)/GbaWadUtil/gbadoom.wad
+APP_BUILD_CFG_FILE := $(NUMWORKS_APP_DIR)/output/.gbadoom_app_build_cfg_$(PLATFORM)
+IWAD_BUILD_CFG_FILE := $(NUMWORKS_APP_DIR)/output/.gbadoom_iwad_build_cfg_$(PLATFORM)
+LEGACY_BUILD_CFG_FILE := $(NUMWORKS_APP_DIR)/output/.gbadoom_build_cfg_$(PLATFORM)
+
+ifeq ($(PLATFORM),device)
+APP_OUTPUT_PLATFORM := device
+else
+APP_OUTPUT_PLATFORM := $(SIM_PLATFORM)
+endif
+
+DOOM_IWAD_OBJ_FILE := $(NUMWORKS_APP_DIR)/output/$(APP_OUTPUT_PLATFORM)/doom_iwad.o
+DOOM_IWAD_DEP_FILE := $(NUMWORKS_APP_DIR)/output/$(APP_OUTPUT_PLATFORM)/doom_iwad.d
 
 # Disable reciprocal table on device by default: saves ~200 KB of FLASH rodata.
 ifeq ($(PLATFORM),device)
@@ -32,7 +44,8 @@ else
 GBADOOM_DISABLE_RECIP_TABLE ?= 0
 endif
 
-BUILD_CFG = $(PLATFORM)|$(USE_EXTERNAL_IWAD)|$(USE_UNSTABLE_ZONE_HEAP_SIZE)|$(GBADOOM_ENABLE_STACK_REUSE)|$(GBADOOM_ENABLE_IWAD_DEBUG)|$(GBADOOM_DISABLE_RECIP_TABLE)|$(WAD_BASENAME)|$(GBADOOM_LINK_FLAGS)|$(GBADOOM_C_OPT_FLAGS)|$(GBADOOM_CXX_OPT_FLAGS)
+APP_BUILD_CFG = $(PLATFORM)|$(USE_EXTERNAL_IWAD)|$(USE_UNSTABLE_ZONE_HEAP_SIZE)|$(GBADOOM_ENABLE_STACK_REUSE)|$(GBADOOM_ENABLE_IWAD_DEBUG)|$(GBADOOM_DISABLE_RECIP_TABLE)|$(GBADOOM_LINK_FLAGS)|$(GBADOOM_C_OPT_FLAGS)|$(GBADOOM_CXX_OPT_FLAGS)
+IWAD_BUILD_CFG = $(PLATFORM)|$(USE_EXTERNAL_IWAD)|$(WAD_BASENAME)|$(COMPRESS_TEXTURES)|$(IWAD_EMBED_NAME)
 
 GBADOOM_BASE_OPT_FLAGS := -Os -g0 -DNDEBUG -fomit-frame-pointer -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-ident
 GBADOOM_C_OPT_FLAGS := $(GBADOOM_BASE_OPT_FLAGS) -ffunction-sections
@@ -76,19 +89,31 @@ NEEDS_EMBEDDED_IWAD := 1
 endif
 
 build:
+	@mkdir -p $(NUMWORKS_APP_DIR)/output
+	@old_app_cfg=""; \
+	if [ -f "$(APP_BUILD_CFG_FILE)" ]; then old_app_cfg=$$(cat "$(APP_BUILD_CFG_FILE)"); fi; \
+	new_app_cfg="$(APP_BUILD_CFG)"; \
+	if [ -z "$$old_app_cfg" ] && [ -f "$(LEGACY_BUILD_CFG_FILE)" ]; then old_app_cfg="$$new_app_cfg"; fi; \
+	if [ "$$old_app_cfg" != "$$new_app_cfg" ]; then \
+		echo "[NUMWORKS] App config changed ($$old_app_cfg -> $$new_app_cfg), cleaning stale objects"; \
+		$(MAKE) -C $(NUMWORKS_APP_DIR) PLATFORM=$(PLATFORM) clean; \
+	fi
+	@old_iwad_cfg=""; \
+	if [ -f "$(IWAD_BUILD_CFG_FILE)" ]; then old_iwad_cfg=$$(cat "$(IWAD_BUILD_CFG_FILE)"); fi; \
+	new_iwad_cfg="$(IWAD_BUILD_CFG)"; \
+	if [ -z "$$old_iwad_cfg" ] && [ -f "$(LEGACY_BUILD_CFG_FILE)" ]; then old_iwad_cfg="$$new_iwad_cfg"; fi; \
+	if [ "$$old_iwad_cfg" != "$$new_iwad_cfg" ]; then \
+		if [ "$(NEEDS_EMBEDDED_IWAD)" = "1" ]; then \
+			echo "[GBADOOM] IWAD input changed ($$old_iwad_cfg -> $$new_iwad_cfg), regenerating embedded IWAD source $(notdir $(IWAD_C_FILE))"; \
+			rm -f "$(IWAD_C_FILE)"; \
+			rm -f "$(DOOM_IWAD_OBJ_FILE)" "$(DOOM_IWAD_DEP_FILE)"; \
+		fi; \
+	fi
 	@if [ "$(NEEDS_EMBEDDED_IWAD)" = "1" ]; then \
 		$(MAKE) $(IWAD_C_FILE); \
 	fi
-	@mkdir -p $(NUMWORKS_APP_DIR)/output
-	@if [ -f "$(BUILD_CFG_FILE)" ]; then \
-		old_cfg=$$(cat "$(BUILD_CFG_FILE)"); \
-		new_cfg="$(BUILD_CFG)"; \
-		if [ "$$old_cfg" != "$$new_cfg" ]; then \
-			echo "[NUMWORKS] Config changed ($$old_cfg -> $$new_cfg), cleaning stale objects"; \
-			$(MAKE) -C $(NUMWORKS_APP_DIR) PLATFORM=$(PLATFORM) clean; \
-		fi; \
-	fi
-	@echo "$(BUILD_CFG)" > "$(BUILD_CFG_FILE)"
+	@echo "$(APP_BUILD_CFG)" > "$(APP_BUILD_CFG_FILE)"
+	@echo "$(IWAD_BUILD_CFG)" > "$(IWAD_BUILD_CFG_FILE)"
 	@echo "[GBADOOM] EXTRA_CFLAGS: $(GBADOOM_C_OPT_FLAGS) $(IWAD_INCLUDE_DEFINE)"
 	@echo "[GBADOOM] EXTRA_CXXFLAGS: $(GBADOOM_CXX_OPT_FLAGS) $(IWAD_INCLUDE_DEFINE)"
 	@echo "[GBADOOM] EXTRA_LDFLAGS: $(GBADOOM_LINK_FLAGS)"
