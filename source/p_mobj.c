@@ -512,22 +512,25 @@ static mobj_t* P_NewMobj()
 {
     mobj_t* mobj = NULL;
 
-    for(int i = _g->thingPoolSize-1; i >= 0; i--)
+    for (int c = 0; c < _g->thingChunkCount; c++)
     {
-        if(_g->thingPool[i].type == MT_NOTHING)
+        mobj_t* chunk = _g->thingChunks[c];
+        for (int j = 0; j < THINGS_PER_CHUNK; j++)
         {
-            mobj = &_g->thingPool[i];
-            memset (mobj, 0, sizeof (*mobj));
-
-            mobj->flags = MF_POOLED;
-            return mobj;
+            if (chunk[j].type == MT_NOTHING)
+            {
+                mobj = &chunk[j];
+                memset(mobj, 0, sizeof(*mobj));
+                mobj->flags = MF_POOLED;
+                return mobj;
+            }
         }
     }
 
-    if(mobj == NULL)
+    if (mobj == NULL)
     {
-        mobj = Z_Malloc (sizeof(*mobj), PU_LEVEL, NULL);
-        memset (mobj, 0, sizeof (*mobj));
+        mobj = Z_Malloc(sizeof(*mobj), PU_LEVEL, NULL);
+        memset(mobj, 0, sizeof(*mobj));
     }
 
     return mobj;

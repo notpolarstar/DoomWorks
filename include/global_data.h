@@ -517,8 +517,10 @@ const byte *rejectmatrix; // cph - const*
 // Maintain single and multi player starting spots.
 mapthing_t playerstarts[MAXPLAYERS];
 
-mobj_t*      thingPool;
-unsigned int thingPoolSize;
+#define THINGS_PER_CHUNK 16
+#define MAX_THING_CHUNKS 64
+int         thingChunkCount;
+mobj_t*     thingChunks[MAX_THING_CHUNKS];
 
 
 //******************************************************************************

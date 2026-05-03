@@ -834,22 +834,12 @@ static void P_LoadNodes (int lump)
 }
 
 
-/*
- * P_LoadThings
- *
- * killough 5/3/98: reformatted, cleaned up
- * cph 2001/07/07 - don't write into the lump cache, especially non-idepotent
- * changes like byte order reversals. Take a copy to edit.
- */
-
-static void P_LoadThings (int lump)
+static int P_CountThings(int lump)
 {
-    int  i;
-    int lump_size;
     int numthings;
+    int lump_size;
     int spawnableThings = 0;
-    int poolSize;
-    const mapthing_t *data = NULL;
+    const mapthing_t* data = NULL;
     boolean is_huffman = false;
     huff_lump_reader_t huff;
 
@@ -872,7 +862,7 @@ static void P_LoadThings (int lump)
     if (((!is_huffman) && (!data)) || (!numthings))
         I_Error("P_LoadThings: no things in level");
 
-    for (i = 0; i < numthings; i++)
+    for (int i = 0; i < numthings; i++)
     {
         mapthing_t decoded_thing;
         const mapthing_t* mt;
@@ -892,23 +882,48 @@ static void P_LoadThings (int lump)
         if (P_WillSpawnMapThing(mt))
             spawnableThings++;
     }
+
     if (is_huffman)
         P_HuffFinishOrError(&huff, "P_LoadThings", lump);
 
-    poolSize = spawnableThings;
-    if (poolSize > numthings)
-        poolSize = numthings;
-    if (poolSize <= 0)
-        poolSize = 1;
+    if (spawnableThings <= 0)
+        spawnableThings = 1;
 
-    _g->thingPool = Z_Calloc(poolSize, sizeof(mobj_t), PU_LEVEL, NULL);
-    _g->thingPoolSize = poolSize;
-    lprintf(LO_INFO, "P_LoadThings: thing pool %d/%d", poolSize, numthings);
+    return spawnableThings;
+}
 
-    for (i = 0; i < poolSize; i++)
+/*
+ * P_LoadThings
+ * Spawns things using the pre-allocated thing pool (pool must be allocated before calling).
+ */
+
+static void P_LoadThings (int lump)
+{
+    int  i;
+    int lump_size;
+    int numthings;
+    const mapthing_t *data = NULL;
+    boolean is_huffman = false;
+    huff_lump_reader_t huff;
+
+    if (P_HuffInitLumpReader(lump, &huff))
     {
-        _g->thingPool[i].type = MT_NOTHING;
+        is_huffman = true;
+        lump_size = (int)huff.raw_size;
     }
+    else
+    {
+        data = (const mapthing_t*)W_CacheLumpNum(lump);
+        lump_size = W_LumpLength(lump);
+    }
+
+    if (lump_size % (int)sizeof(mapthing_t) != 0)
+        I_Error("P_LoadThings: invalid lump size %d", lump_size);
+
+    numthings = lump_size / (int)sizeof(mapthing_t);
+
+    if (((!is_huffman) && (!data)) || (!numthings))
+        I_Error("P_LoadThings: no things in level");
 
     if (is_huffman)
         P_HuffResetReader(&huff);
@@ -1728,6 +1743,21 @@ void P_SetupLevel(int episode, int map, int playermask, skill_t skill)
     }
 
     lumpnum = W_GetNumForName(lumpname);
+
+    // Allocate thing pool as small chunks FIRST, before any other level data,
+    // to avoid large contiguous allocations that fail on fragmented heap.
+    int thingPoolSize = P_CountThings(lumpnum + ML_THINGS);
+    int chunks = (thingPoolSize + THINGS_PER_CHUNK - 1) / THINGS_PER_CHUNK;
+    if (chunks > MAX_THING_CHUNKS)
+        chunks = MAX_THING_CHUNKS;
+    _g->thingChunkCount = chunks;
+    for (int c = 0; c < chunks; c++)
+    {
+        _g->thingChunks[c] = Z_Calloc(THINGS_PER_CHUNK, sizeof(mobj_t), PU_LEVEL, NULL);
+        for (int j = 0; j < THINGS_PER_CHUNK; j++)
+            _g->thingChunks[c][j].type = MT_NOTHING;
+    }
+    lprintf(LO_INFO, "P_SetupLevel: thing pool %d (%d chunks)", thingPoolSize, chunks);
 
     _g->leveltime = 0; _g->totallive = 0;
 
