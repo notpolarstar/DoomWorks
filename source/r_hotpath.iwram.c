@@ -96,7 +96,11 @@ typedef struct
     byte symbols_sorted[GBADOOM_HUFF_MAX_SYMBOLS];
 } flat_huff_reader_t;
 
+#if defined(NUMWORKS) && PLATFORM_DEVICE
+static byte* s_flat_decode_buffer = NULL;
+#else
 static byte s_flat_decode_buffer[GBADOOM_FLAT_LUMP_SIZE];
+#endif
 static int s_flat_decode_lump = -1;
 static int s_flat_decode_mode = -1;
 
@@ -312,6 +316,14 @@ static const byte* R_GetFlatSpanSource(int lump_num)
 
     if (!textured)
     {
+#if defined(NUMWORKS) && PLATFORM_DEVICE
+        if (s_flat_decode_buffer == NULL)
+        {
+            s_flat_decode_buffer = (byte*)malloc(GBADOOM_FLAT_LUMP_SIZE);
+            if (s_flat_decode_buffer == NULL)
+                return lump_data;
+        }
+#endif
         if (s_flat_decode_lump != lump_num || s_flat_decode_mode != 0)
         {
             byte color = is_huffman ? R_DecodeFlatFirstColor(lump_num, lump_data, lump_size) : lump_data[0];
@@ -332,6 +344,14 @@ static const byte* R_GetFlatSpanSource(int lump_num)
 
     if (s_flat_decode_lump != lump_num || s_flat_decode_mode != 1)
     {
+#if defined(NUMWORKS) && PLATFORM_DEVICE
+        if (s_flat_decode_buffer == NULL)
+        {
+            s_flat_decode_buffer = (byte*)malloc(GBADOOM_FLAT_LUMP_SIZE);
+            if (s_flat_decode_buffer == NULL)
+                return lump_data;
+        }
+#endif
         R_DecodeFlatHuffmanLump(lump_num, lump_data, lump_size, s_flat_decode_buffer);
         s_flat_decode_lump = lump_num;
         s_flat_decode_mode = 1;
@@ -443,7 +463,7 @@ short* negonearray = (short*)&vram2_spare[240];
 //*****************************************
 
 #if defined(NUMWORKS) && PLATFORM_DEVICE
-#define COLUMN_CACHE_SETS 32
+#define COLUMN_CACHE_SETS 16
 #else
 #define COLUMN_CACHE_SETS 128
 #endif
