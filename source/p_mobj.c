@@ -651,7 +651,7 @@ static PUREFUNC int P_FindDoomedNum(unsigned int type)
 
 static boolean P_IsPureDecorativeType(int type)
 {
-    const unsigned int keep_mask = MF_SPECIAL | MF_SOLID | MF_SHOOTABLE | MF_COUNTITEM | MF_COUNTKILL;
+    const unsigned int keep_mask = MF_SPECIAL | MF_SHOOTABLE | MF_COUNTITEM | MF_COUNTKILL;
 
     if (_g->gbadoom_visual_extras)
         return false;

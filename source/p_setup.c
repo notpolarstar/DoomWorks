@@ -1661,8 +1661,7 @@ static int P_GroupLines (void)
             M_AddToBox (bbox, LN_V2(sl)->x, LN_V2(sl)->y);
         }
 
-        sector->soundorg.x = bbox[BOXRIGHT]/2+bbox[BOXLEFT]/2;
-        sector->soundorg.y = bbox[BOXTOP]/2+bbox[BOXBOTTOM]/2;
+
     }
 
     return total; // this value is needed by the reject overrun emulation code

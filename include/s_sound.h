@@ -67,6 +67,13 @@ void S_StartSound(mobj_t *origin, int sfx_id);
 
 void S_StartSound2(degenmobj_t* origin, int sfx_id);
 
+#ifdef NUMWORKS
+extern degenmobj_t g_dummy_soundorg;
+#define S_SOUNDORG(s) (&g_dummy_soundorg)
+#else
+#define S_SOUNDORG(s) (&(s)->soundorg)
+#endif
+
 // killough 4/25/98: mask used to indicate sound origin is player item pickup
 #define PICKUP_SOUND (0x8000)
 

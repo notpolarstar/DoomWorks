@@ -162,7 +162,7 @@ static void P_StartButton
       _g->buttonlist[i].btimer = time;
       /* use sound origin of line itself - no need to compatibility-wrap
        * as the popout code gets it wrong whatever its value */
-      _g->buttonlist[i].soundorg = &LN_FRONTSECTOR(line)->soundorg;
+
       return;
     }
 
@@ -242,7 +242,7 @@ void P_ChangeSwitchTexture (const line_t* line, int useAgain)
             break;
     }
 
-    S_StartSound2(&LN_FRONTSECTOR(line)->soundorg, sound);
+    S_StartSound2(&g_dummy_soundorg, sound);
 
     if (useAgain)
         P_StartButton(line, position, _g->switchlist[i], BUTTONTIME);

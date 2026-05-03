@@ -61,7 +61,7 @@
 
 #if defined(NUMWORKS) && PLATFORM_DEVICE
 #define MAXDRAWSEGS   104
-#define MAXOPENINGS (SCREENWIDTH*12)
+#define MAXOPENINGS (SCREENWIDTH*10)
 #define MAXVISSPRITES 32
 #else
 #define MAXDRAWSEGS   192
@@ -102,7 +102,6 @@ typedef struct
   fixed_t ceilingheight;
 
   mobj_t *soundtarget;   // thing that made a sound (or null)
-  degenmobj_t soundorg;  // origin for any sounds played by the sector
   int validcount;        // if == validcount, already checked
   mobj_t *thinglist;     // list of mobjs in sector
 

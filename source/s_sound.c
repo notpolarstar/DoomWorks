@@ -49,6 +49,10 @@
 
 #include "global_data.h"
 
+#ifdef NUMWORKS
+degenmobj_t g_dummy_soundorg = {0, 0};
+#endif
+
 // when to clip out sounds
 // Does not fit the large outdoor areas.
 #define S_CLIPPING_DIST (1200<<FRACBITS)
