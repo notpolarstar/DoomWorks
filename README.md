@@ -12,7 +12,7 @@ This project uses a python rewrite of [GbaWadUtil](https://github.com/doomhack/G
 
 **This port is still very much a work in progress / proof of concept !!!**
 
-The biggest challenge when porting this was RAM usage, as a Numworks app only has about **128KB** of RAM available, which is almost nothing when compared to the original PC recommandations (~4MB) and half of the GBA's specs (~256KB).
+The biggest challenge when porting this was RAM usage, as a Numworks app only has **153 580 bytes** of RAM available, which is almost nothing when compared to the original PC recommandations (~4MB) and half of the GBA's specs (~256KB).
 
 The available storage space for a Numworks app was also a major constaint, as on my 25.2.0 Epsilon N0110 device, I could only install an app of about 2.6MB total.
 
@@ -28,10 +28,13 @@ However, the OS only gives 128KB of memory for the entire app. This means that a
 
 If your WAD is too big to fit on your device, here are some projects that can help you port your favorite WADs :
 
+- [ZenNode](https://github.com/Doom-Utils/zennode) : Fast Doom BSP builder
 - [Wadptr](https://github.com/fragglet/wadptr) : A Doom WAD file compressor, almost necessary to port WADs to this project. (by fragglet)
 - [Miniwad](https://github.com/fragglet/miniwad) : A (very) minimalist Doom IWAD, letting you use Wadptr to its full potential. (also by fragglet)
 
-**Miniwad + Wadptr = A tiny WAD that can (probably) fit into your Numworks.**
+**ZenNode + Wadptr = A tiny WAD that can (probably) fit into your Numworks.**
+
+Using ZenNode first then Wadptr saves more space than the other way around.
 
 In case you need even more space, you can use [Nwagra](https://yaya-cout.github.io/Nwagyu/guide/help/enlarge-your-memory.html) (by yaya-cout), a tool letting you use up to 6MB to install apps (for N0110, N0115 and N0120) !
 
