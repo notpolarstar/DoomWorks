@@ -99,17 +99,11 @@ Notes:
 
 ### Run on simulator
 
-Build and run with a WAD:
-
-```bash
-make PLATFORM=simulator run WAD=doom1.wad -j4
-```
-
-Build only:
-
 ```bash
 make PLATFORM=simulator build WAD=doom1.wad -j4
 ```
+
+Then you can use `--nwb gbadoom.nwb` when launching the Epsilon simulator.
 
 Clean:
 
