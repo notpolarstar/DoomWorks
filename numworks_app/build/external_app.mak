@@ -174,7 +174,7 @@ else
 .PHONY: build
 build: $(BUILD_DIR)/$(APP_NAME).nwb
 
-$(BUILD_DIR)/$(APP_NAME).nwb: $(call object_for,$(SOURCES)) $(SIMULATOR) $(LIBS) | $(BUILD_DIR)
+$(BUILD_DIR)/$(APP_NAME).nwb: $(call object_for,$(SOURCES)) $(LIBS) | $(BUILD_DIR)
 	@echo "LD      $@"
 	$(Q) $(CC) $(CXXFLAGS) $(call object_for,$(SOURCES)) $(LDFLAGS) -o $@
 
